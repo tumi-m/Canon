@@ -1,0 +1,29 @@
+# env — never commit these
+.env
+.env.*
+!.env.example
+
+# deps / build
+node_modules/
+.next/
+out/
+dist/
+build/
+
+# test output
+coverage/
+playwright-report/
+test-results/
+/blob-report/
+.playwright/
+
+# editors / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+*.log
+npm-debug.log*
