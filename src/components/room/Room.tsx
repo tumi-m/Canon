@@ -18,6 +18,7 @@ import {
   type Sleeve,
   type Unit,
 } from "./world";
+import { VENUES, venueById, type VenueId } from "./venues";
 import styles from "./Room.module.css";
 
 type Props = {
@@ -26,6 +27,8 @@ type Props = {
   services: readonly string[];
   /** whose room this is, shown on the way in */
   displayName: string;
+  venue: VenueId;
+  onVenue: (venue: VenueId) => void;
   onLeave: () => void;
   onBrowseList: () => void;
   onCapsule: () => void;
@@ -94,9 +97,11 @@ export default function Room(props: Props) {
 }
 
 function RoomScene({
-  entries, region, services, displayName, onLeave, onBrowseList, onCapsule, host, opener,
+  entries, region, services, displayName, venue, onVenue,
+  onLeave, onBrowseList, onCapsule, host, opener,
 }: Props & { host: HTMLElement; opener: React.RefObject<HTMLElement | null> }) {
-  const world = useMemo(() => buildWorld(entries), [entries]);
+  const place = useMemo(() => venueById(venue), [venue]);
+  const world = useMemo(() => buildWorld(entries, place.shelves), [entries, place]);
   const paid = useMemo(() => new Set(services), [services]);
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -110,6 +115,8 @@ function RoomScene({
   const [opened, setOpened] = useState<number | null>(null);
   const [flipped, setFlipped] = useState(false);
   const [coarse, setCoarse] = useState(false);
+  /** watching full-size, out of the room */
+  const [theatre, setTheatre] = useState(false);
 
   const reduced = useRef(false);
   const touch = useRef(false);
@@ -176,7 +183,8 @@ function RoomScene({
       if (!target) return;
       if (target.kind === "capsule") return onCapsule();
       if (target.kind === "tv") {
-        setTvOn((on) => !on);
+        setTvOn(true);
+        setTheatre(true);
         sound.current?.clack();
         return;
       }
@@ -219,13 +227,29 @@ function RoomScene({
       on: true,
     }));
 
-    const cull = () => {
+    /* Hysteresis, and the reason the room used to flicker. With one threshold,
+       anything sitting near it flips between visible and hidden every time the
+       camera drifts a few pixels — so props blink as you walk. Showing and
+       hiding now happen at different distances, and nothing between the two
+       changes state at all. */
+    const HYST = 320;
+    /**
+     * `strict` ignores the hysteresis. It has to exist for the first pass:
+     * every prop starts marked visible, so a lenient first test leaves the
+     * wall behind the spawn point on — and a wall behind you renders inverted
+     * across the whole view and swallows every click aimed at a shelf.
+     */
+    const cull = (strict = false) => {
       const yaw = (L.yaw * Math.PI) / 180;
       const s = Math.sin(yaw);
       const c = Math.cos(yaw);
+      const slack = strict ? 0 : HYST;
       for (const item of cullable) {
         const depth = (item.x - L.x) * s - (item.z - L.z) * c;
-        const on = depth > -item.margin && depth < 5200;
+        const on =
+          item.on && !strict
+            ? depth > -item.margin - slack && depth < 5200 + slack // keep it a little longer
+            : depth > -item.margin && depth < 5200; // but be strict about bringing it back
         if (on !== item.on) {
           item.on = on;
           item.node.style.visibility = on ? "" : "hidden";
@@ -264,7 +288,7 @@ function RoomScene({
       L.last = t;
       step(dt);
       if (++L.frame % 3 === 0) {
-        const hit = aimAt(targets, L);
+        const hit = aimAt(targets, L, { holding: L.aim });
         if (hit?.key !== L.aim?.key) {
           L.aim = hit ?? null;
           setAimKey(hit?.key ?? null);
@@ -272,7 +296,7 @@ function RoomScene({
           else if (hit.kind === "capsule")
             setAimLabel({ title: "the capsule", hint: "E · SEALED UNTIL ITS DATE" });
           else if (hit.kind === "tv")
-            setAimLabel({ title: "the television", hint: "E · SURF THE CANON" });
+            setAimLabel({ title: "the television", hint: "E · SIT DOWN AND WATCH" });
           else
             setAimLabel({
               title: entries[hit.entry!]?.work.title ?? "",
@@ -286,13 +310,14 @@ function RoomScene({
     };
 
     apply();
-    cull();
+    cull(true);
     L.last = performance.now();
-    L.raf = requestAnimationFrame(loop);
+    // no point walking a room nobody is looking at
+    if (!theatre) L.raf = requestAnimationFrame(loop);
     exitRef.current?.focus({ preventScroll: true });
 
     return () => cancelAnimationFrame(L.raf);
-  }, [world, targets, entries]);
+  }, [world, targets, entries, theatre]);
 
   /* ---------- keyboard ---------- */
   useEffect(() => {
@@ -310,7 +335,8 @@ function RoomScene({
         return;
       }
       if (k === "t") {
-        setTvOn((on) => !on);
+        setTvOn(true);
+        setTheatre((on) => !on);
         e.preventDefault();
         return;
       }
@@ -330,7 +356,8 @@ function RoomScene({
         return;
       }
       if (k === "escape") {
-        if (opened !== null) setOpened(null);
+        if (theatre) setTheatre(false);
+        else if (opened !== null) setOpened(null);
         else if (document.pointerLockElement === rootRef.current) document.exitPointerLock();
         else onLeave();
       }
@@ -348,7 +375,7 @@ function RoomScene({
       document.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
     };
-  }, [activate, onLeave, opened, tune]);
+  }, [activate, onLeave, opened, theatre, tune]);
 
   /* ---------- looking around ---------- */
   useEffect(() => {
@@ -464,8 +491,9 @@ function RoomScene({
       <div
         ref={rootRef}
         className={styles.room}
+        data-venue={place.id}
         role="application"
-        aria-label={`${displayName}'s room`}
+        aria-label={`${displayName}'s ${place.noun}`}
       >
         <div ref={worldRef} className={styles.world}>
           <div className={styles.floor} />
@@ -659,9 +687,12 @@ function RoomScene({
       <div className={`${styles.hud} ${styles.hudTop}`}>
         <button ref={exitRef} className={styles.exit} onClick={onLeave}>
           ✕ let yourself out
+          <span className={styles.exitHint}>OR PRESS ESC</span>
         </button>
         <span className={styles.now}>
-          {playing ? `${channelLabel(channel)} · ${playing.title}` : (at ?? `${displayName}'s room`)}
+          {playing
+            ? `${channelLabel(channel)} · ${playing.title}`
+            : (at ?? `${displayName}'s ${place.noun}`)}
         </span>
       </div>
 
@@ -670,8 +701,17 @@ function RoomScene({
         <button title="step back" {...hold("s")}>▼</button>
         <button title="step forward" {...hold("w")}>▲</button>
         <button title="step right" {...hold("d")}>▶</button>
-        <button onClick={() => setTvOn((on) => !on)} title="the television (t)">
-          {tvOn ? "◼ tv off" : "▶ tv on"}
+        <button
+          onClick={() => {
+            setTvOn(true);
+            setTheatre(true);
+          }}
+          title="watch full size (t)"
+        >
+          ▶ watch
+        </button>
+        <button onClick={() => setTvOn((on) => !on)} title="the set in the room">
+          {tvOn ? "◼ set off" : "◻ set on"}
         </button>
         {tvOn && channels.length > 0 ? (
           <>
@@ -689,6 +729,20 @@ function RoomScene({
         <button onClick={toggleSound} title="room sound — footsteps, not a soundtrack">
           {audible ? "◉ room sound" : "○ room sound"}
         </button>
+        <label className={styles.venuePick}>
+          <span className={styles.venueLabel}>where</span>
+          <select
+            value={place.id}
+            onChange={(e) => onVenue(e.target.value as VenueId)}
+            aria-label="where you keep it"
+          >
+            {VENUES.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <button onClick={onBrowseList}>☰ read it as a list</button>
         <span className={styles.hint}>
           {coarse
@@ -696,6 +750,39 @@ function RoomScene({
             : "wasd to walk · click to look around · e to take something off the shelf"}
         </span>
       </div>
+
+      {theatre && playing ? (
+        <div
+          className={styles.theatre}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`watching ${playing.title}`}
+        >
+          <div className={styles.theatreScreen}>
+            {/* full size, and with its own controls: this is a screen you are
+                watching, not a prop in a room, so YouTube's chrome belongs to
+                the viewer here */}
+            <iframe
+              key={`${playing.videoId}:${muted ? "m" : "s"}:big`}
+              src={embedUrl(playing.videoId, { muted })}
+              title={playing.title}
+              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
+          </div>
+          <p className={styles.theatreTitle}>
+            {channelLabel(channel)} · {playing.title}
+          </p>
+          <div className={styles.theatreBar}>
+            <button onClick={() => tune(-1)}>⏮ previous</button>
+            <button onClick={() => tune(1)}>⏭ next</button>
+            <button onClick={() => setMuted((m) => !m)}>{muted ? "🔇 unmute" : "🔊 mute"}</button>
+            <button onClick={() => setTheatre(false)}>↩ back to the room</button>
+            <button onClick={onLeave}>✕ leave</button>
+          </div>
+        </div>
+      ) : null}
 
       {openedEntry ? (
         <div

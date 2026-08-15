@@ -9,7 +9,7 @@
   inset: 0;
   z-index: 200;
   overflow: hidden;
-  background: radial-gradient(ellipse at 50% 55%, #2a2018 0%, #150f0b 60%, #0a0706 100%);
+  background: var(--room-void);
   perspective: 700px;
   perspective-origin: 50% 50%;
   cursor: crosshair;
@@ -30,6 +30,9 @@
   transform-style: preserve-3d;
   transform: rotateZ(var(--roll, 0deg)) rotateX(var(--pitch, 0deg)) rotateY(var(--yaw, 0deg))
     translate3d(calc(var(--cx, 0px) * -1), calc(var(--cy, 0px) * -1), calc(var(--cz, 0px) * -1));
+  /* the only thing that moves every frame; promoting it once stops the
+     browser re-deciding each frame, which shows up as micro-stutter */
+  will-change: transform;
 }
 .world > * {
   position: absolute;
@@ -48,9 +51,9 @@
   /* floorboards: grain, a shadowed seam and a bevel per board */
   background:
     /* the pools the two pendants throw on the boards */
-    radial-gradient(30% 22% at 38% 36%, rgba(255, 206, 140, 0.26), transparent 72%),
-    radial-gradient(26% 18% at 64% 62%, rgba(255, 196, 130, 0.2), transparent 74%),
-    var(--tex-wood),
+    radial-gradient(30% 22% at 38% 36%, var(--room-lamp), transparent 72%),
+    radial-gradient(26% 18% at 64% 62%, var(--room-lamp), transparent 74%),
+    var(--room-floor-tex),
     repeating-linear-gradient(
       90deg,
       rgba(0, 0, 0, 0.5) 0 3px,
@@ -62,7 +65,7 @@
       rgba(0, 0, 0, 0.14) 0 1px,
       transparent 1px 340px
     ),
-    repeating-linear-gradient(90deg, #593c26 0 172px, #5f4129 172px 344px);
+    repeating-linear-gradient(90deg, var(--room-floor-a) 0 172px, var(--room-floor-b) 172px 344px);
   background-blend-mode: normal, normal, overlay, normal, normal, normal;
   box-shadow: inset 0 0 300px rgba(0, 0, 0, 0.86);
 }
@@ -76,10 +79,10 @@
   background:
     var(--tex-weave),
     radial-gradient(ellipse at center, rgba(214, 132, 84, 0.42), transparent 70%),
-    repeating-linear-gradient(46deg, #6d3326 0 30px, #7a3a2b 30px 60px),
+    repeating-linear-gradient(46deg, var(--room-rug-a) 0 30px, var(--room-rug-b) 30px 60px),
     repeating-linear-gradient(-46deg, rgba(0, 0, 0, 0.16) 0 30px, transparent 30px 60px);
   background-blend-mode: overlay, normal, normal, normal;
-  border: 14px solid #58241b;
+  border: 14px solid var(--room-rug-edge);
   box-shadow:
     0 0 60px rgba(0, 0, 0, 0.55),
     inset 0 0 90px rgba(0, 0, 0, 0.4);
@@ -92,15 +95,15 @@
   transform: translateY(-300px) rotateX(90deg);
   /* a ceiling is never flat black: the shades bounce onto it */
   background:
-    radial-gradient(16% 12% at 38% 36%, rgba(255, 206, 140, 0.24), transparent 70%),
-    radial-gradient(14% 10% at 64% 62%, rgba(255, 196, 130, 0.18), transparent 72%),
-    #17110f;
+    radial-gradient(16% 12% at 38% 36%, var(--room-lamp), transparent 70%),
+    radial-gradient(14% 10% at 64% 62%, var(--room-lamp), transparent 72%),
+    var(--room-ceil);
 }
 .wall {
   height: 590px;
   margin-top: -300px;
   background:
-    var(--tex-card),
+    var(--room-wall-tex),
     linear-gradient(transparent 0 87%, rgba(0, 0, 0, 0.55) 87% 92.5%, rgba(255, 220, 170, 0.05) 92.5% 93.5%, transparent 93.5%),
     linear-gradient(transparent 0 13%, rgba(255, 220, 170, 0.08) 13% 14.5%, transparent 14.5%),
     linear-gradient(#4a3627 0%, #33251b 46%, #241812 100%);
@@ -112,12 +115,12 @@
    per frame and does not float. */
 .wall {
   background-image:
-    radial-gradient(60% 90% at 26% 8%, rgba(255, 206, 140, 0.3), transparent 70%),
-    radial-gradient(52% 80% at 72% 6%, rgba(255, 196, 130, 0.22), transparent 72%),
-    var(--tex-card),
+    radial-gradient(60% 90% at 26% 8%, var(--room-lamp), transparent 70%),
+    radial-gradient(52% 80% at 72% 6%, var(--room-lamp), transparent 72%),
+    var(--room-wall-tex),
     linear-gradient(transparent 0 87%, rgba(0, 0, 0, 0.55) 87% 92.5%, rgba(255, 220, 170, 0.05) 92.5% 93.5%, transparent 93.5%),
     linear-gradient(transparent 0 13%, rgba(255, 220, 170, 0.08) 13% 14.5%, transparent 14.5%),
-    linear-gradient(#4a3627 0%, #33251b 46%, #241812 100%);
+    linear-gradient(var(--room-wall-a) 0%, var(--room-wall-b) 46%, var(--room-wall-c) 100%);
 }
 .wallSide {
   width: 2500px;
@@ -155,11 +158,16 @@
   position: absolute;
   inset: 0;
   /* a cone read end-on: dark enamel outside, a bright rim where it opens */
-  background: linear-gradient(#2a211c 0%, #3b2f27 46%, #7a5c3e 82%, #ffdca8 100%);
+  background: linear-gradient(
+    var(--room-carcass-c) 0%,
+    var(--room-carcass-b) 46%,
+    color-mix(in srgb, var(--room-glow) 40%, var(--room-carcass-a)) 82%,
+    var(--room-glow) 100%
+  );
   border-radius: 40% 40% 46% 46% / 22% 22% 60% 60%;
   box-shadow:
-    inset 0 -6px 12px rgba(255, 214, 158, 0.5),
-    0 0 40px rgba(255, 196, 130, 0.18);
+    inset 0 -6px 12px color-mix(in srgb, var(--room-glow) 50%, transparent),
+    0 0 40px var(--room-lamp);
 }
 .bulb {
   position: absolute;
@@ -171,18 +179,18 @@
   border-radius: 50%;
   background: radial-gradient(
     circle at center,
-    rgba(255, 240, 210, 0.95) 0%,
-    rgba(255, 206, 140, 0.5) 26%,
+    var(--room-glow) 0%,
+    color-mix(in srgb, var(--room-glow) 52%, transparent) 26%,
     transparent 66%
   );
 }
 
 /* ---------- furniture ---------- */
 .unit {
-  border: 10px solid #241708;
+  border: 10px solid var(--room-edge);
   background:
-    var(--tex-wood),
-    linear-gradient(#43301e 0%, #2e1f13 58%, #1b120b 100%);
+    var(--room-floor-tex),
+    linear-gradient(var(--room-carcass-a) 0%, var(--room-carcass-b) 58%, var(--room-carcass-c) 100%);
   background-blend-mode: overlay, normal;
   box-shadow:
     /* the carcass is deeper than the frame; shade the back of it */
@@ -258,9 +266,9 @@
   font-family: var(--mono);
   font-size: 13px;
   letter-spacing: 0.16em;
-  color: #e8cfa5;
-  background: rgba(20, 13, 9, 0.8);
-  border: 1px solid rgba(232, 207, 165, 0.24);
+  color: var(--room-label);
+  background: rgba(12, 10, 8, 0.82);
+  border: 1px solid color-mix(in srgb, var(--room-label) 26%, transparent);
   border-radius: 3px;
   padding: 4px 12px;
   white-space: nowrap;
@@ -422,10 +430,10 @@
     0 26px 48px rgba(0, 0, 0, 0.68);
 }
 .tv {
-  width: 760px;
-  height: 470px;
-  margin-left: -380px;
-  margin-top: -235px;
+  width: 1180px;
+  height: 720px;
+  margin-left: -590px;
+  margin-top: -360px;
   /* moulded plastic: a lit top edge, a shadowed underside, grain over both */
   background:
     var(--tex-grain),
@@ -541,6 +549,70 @@
   background-blend-mode: overlay, normal;
   opacity: 0.9;
 }
+/* Watching: the set fills the view. Walking a 3D room to squint at a screen
+   inside it is a worse way to watch something than just watching it, so this
+   steps out of the room rather than trying to fake a cinema seat. */
+.theatre {
+  position: fixed;
+  inset: 0;
+  z-index: 207;
+  background: #05060a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 3vh 3vw 12vh;
+}
+.theatreScreen {
+  position: relative;
+  width: min(100%, calc((100vh - 22vh) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+  box-shadow:
+    0 0 0 1px rgba(240, 226, 203, 0.12),
+    0 0 180px 40px rgba(120, 170, 255, 0.09);
+}
+.theatreScreen iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.theatreBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: #f0e2cb;
+}
+.theatreBar button {
+  border: 1px solid rgba(240, 226, 203, 0.35);
+  padding: 9px 16px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #f0e2cb;
+}
+.theatreBar button:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+.theatreTitle {
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  color: #fff;
+  text-align: center;
+  max-width: 60ch;
+}
+
 .osd {
   position: absolute;
   top: 14px;
@@ -626,15 +698,27 @@
   pointer-events: auto;
 }
 .exit {
-  border: 1px solid rgba(240, 226, 203, 0.4);
-  padding: 8px 14px;
+  border: 1px solid rgba(240, 226, 203, 0.6);
+  padding: 11px 20px;
   border-radius: 99px;
-  background: rgba(0, 0, 0, 0.45);
-  color: #f0e2cb;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
 }
-.exit:hover {
+.exit:hover,
+.exit:focus-visible {
+  background: var(--red);
   border-color: var(--red);
   color: #fff;
+}
+.exitHint {
+  display: block;
+  font-size: 0.56rem;
+  letter-spacing: 0.18em;
+  opacity: 0.7;
+  margin-top: 3px;
 }
 .now {
   background: rgba(0, 0, 0, 0.48);
@@ -978,4 +1062,24 @@
   .hint {
     display: none;
   }
+}
+
+/* change building without leaving */
+.venuePick {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.venueLabel {
+  opacity: 0.55;
+}
+.venuePick select {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  color: #f0e2cb;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid rgba(240, 226, 203, 0.35);
+  border-radius: 5px;
+  padding: 11px 10px;
 }

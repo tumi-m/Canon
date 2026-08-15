@@ -63,3 +63,50 @@ test.describe("the room", () => {
     await expect(card).toHaveCount(0);
   });
 });
+
+test.describe("watching and leaving", () => {
+  test("the screen fills the view, and esc unwinds one layer at a time", async ({ page }) => {
+    await page.goto("/tumelo");
+    await page.getByRole("button", { name: "step into the room" }).click();
+    await expect(page.getByRole("button", { name: "let yourself out" })).toBeVisible();
+
+    await page.getByRole("button", { name: "watch", exact: false }).first().click();
+    const theatre = page.getByRole("dialog", { name: /watching/ });
+    await expect(theatre).toBeVisible();
+    const frame = theatre.locator("iframe");
+    await expect(frame).toBeVisible();
+    const box = await frame.boundingBox();
+    const view = page.viewportSize()!;
+    // "much bigger" is the requirement: the screen has to dominate the viewport
+    expect(box!.width).toBeGreaterThan(view.width * 0.6);
+
+    await page.keyboard.press("Escape");
+    await expect(theatre).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "let yourself out" })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-canon-room]")).toHaveCount(0);
+  });
+
+  test("you can change building without leaving", async ({ page }) => {
+    await page.goto("/tumelo");
+    await page.getByRole("button", { name: "step into the room" }).click();
+    const room = page.locator("[class*=room]").first();
+    await expect(room).toHaveAttribute("data-venue", "den");
+
+    await page.getByLabel("where you keep it").selectOption("vault");
+    await expect(page.locator("[data-venue=vault]")).toHaveCount(1);
+    // the shelves are renamed in the vocabulary of the building
+    await expect(page.getByText("sealed").first()).toBeVisible();
+  });
+
+  test("leaving is always one obvious control away", async ({ page }) => {
+    await page.goto("/tumelo");
+    await page.getByRole("button", { name: "step into the room" }).click();
+    const exit = page.getByRole("button", { name: "let yourself out" });
+    await expect(exit).toBeFocused();
+    await expect(exit).toContainText("ESC");
+    await exit.click();
+    await expect(page.locator("[data-canon-room]")).toHaveCount(0);
+  });
+});

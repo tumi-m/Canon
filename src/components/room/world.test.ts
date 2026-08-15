@@ -153,3 +153,46 @@ describe("nearestUnit", () => {
     }
   });
 });
+
+describe("venues", () => {
+  it("names the shelves in the vocabulary of the building", () => {
+    const vault = sectionsFor(entries, ["sealed", "held", "deposited", "loose"]);
+    expect(vault.map((s) => s.name)).toEqual(["sealed", "held", "deposited", "loose"]);
+  });
+
+  it("shelves the same canon whatever the building is called", () => {
+    const den = buildWorld(entries);
+    const vault = buildWorld(entries, ["sealed", "held", "deposited", "loose"]);
+    const ids = (w: ReturnType<typeof buildWorld>) =>
+      w.units.flatMap((u) => u.sleeves.map((s) => s.entry)).sort((a, b) => a - b);
+    expect(ids(vault)).toEqual(ids(den));
+  });
+
+  it("falls back to the default name for any the venue leaves out", () => {
+    expect(sectionsFor(entries, ["only one"])[0]?.name).toBe("only one");
+    expect(sectionsFor(entries, [])[0]?.name).toBe("the ones that changed me");
+  });
+});
+
+describe("aim hysteresis", () => {
+  const cam = { x: 0, z: 0, yaw: 0, pitch: 0 };
+  const a = { x: -80, y: 0, z: -400 };
+  const b = { x: 80, y: 0, z: -400 };
+
+  it("keeps hold of what you are already pointing at", () => {
+    // both are equally in view; whichever is held should stay held, rather
+    // than the two trading the highlight every few frames as you drift
+    expect(aimAt([a, b], cam, { holding: a })).toBe(a);
+    expect(aimAt([a, b], cam, { holding: b })).toBe(b);
+  });
+
+  it("still gives way to something clearly nearer", () => {
+    const near = { x: 0, y: 0, z: -160 };
+    expect(aimAt([near, b], cam, { holding: b })).toBe(near);
+  });
+
+  it("lets go once the held target leaves the widened cone", () => {
+    const far = { x: 900, y: 0, z: -300 };
+    expect(aimAt([far], cam, { holding: far })).toBeNull();
+  });
+});

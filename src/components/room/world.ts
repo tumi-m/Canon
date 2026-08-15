@@ -120,15 +120,25 @@ export function artFor(input: string): string {
  * Shelves, in the order you meet them walking in. The names are domestic
  * rather than retail — this is a room, and nothing in it is for sale.
  */
-export function sectionsFor(entries: readonly Entry[]): readonly Section[] {
+export const DEFAULT_SHELF_NAMES = [
+  "the ones that changed me",
+  "played to death",
+  "the good shelf",
+  "odds and ends",
+] as const;
+
+export function sectionsFor(
+  entries: readonly Entry[],
+  names: readonly string[] = DEFAULT_SHELF_NAMES,
+): readonly Section[] {
   const byWeight = (w: number) => entries.flatMap((e, i) => (e.weight === w ? [i] : []));
   const picks = entries.flatMap((e, i) => (e.highlighted ? [i] : []));
 
   const all: Section[] = [
-    { name: "the ones that changed me", entries: byWeight(3) },
-    { name: "played to death", entries: picks },
-    { name: "the good shelf", entries: byWeight(2) },
-    { name: "odds and ends", entries: byWeight(1) },
+    { name: names[0] ?? DEFAULT_SHELF_NAMES[0], entries: byWeight(3) },
+    { name: names[1] ?? DEFAULT_SHELF_NAMES[1], entries: picks },
+    { name: names[2] ?? DEFAULT_SHELF_NAMES[2], entries: byWeight(2) },
+    { name: names[3] ?? DEFAULT_SHELF_NAMES[3], entries: byWeight(1) },
   ];
   const stocked = all.filter((s) => s.entries.length > 0);
   return stocked.length > 0
@@ -198,8 +208,11 @@ function makeUnit(
   };
 }
 
-export function buildWorld(entries: readonly Entry[]): World {
-  const sections = sectionsFor(entries);
+export function buildWorld(
+  entries: readonly Entry[],
+  shelfNames?: readonly string[],
+): World {
+  const sections = sectionsFor(entries, shelfNames);
   const units: Unit[] = [];
   const boxes: Box[] = [];
 
@@ -293,22 +306,44 @@ export function project(target: Aim, cam: Camera): { depth: number; lateral: num
   return { depth: dx * s - dz * c, lateral: dx * c + dz * s };
 }
 
-/** What is under the reticle, or null when you are looking at the rug. */
+/**
+ * What is under the reticle, or null when you are looking at the rug.
+ *
+ * `holding` is what the reticle was on last frame. Two objects at nearly the
+ * same angle would otherwise trade the highlight back and forth every few
+ * frames as you drift, and each swap restarts a transition — which is what
+ * flickering looks like. Whatever you are already pointing at gets a wider
+ * cone, so it has to be clearly lost before anything takes it.
+ */
 export function aimAt<T extends Aim>(
   targets: readonly T[],
   cam: Camera,
-  opts: { lateral?: number; vertical?: number; near?: number; far?: number } = {},
+  opts: {
+    lateral?: number;
+    vertical?: number;
+    near?: number;
+    far?: number;
+    holding?: T | null;
+  } = {},
 ): T | null {
-  const { lateral = 120, vertical = 160, near = 110, far = 1600 } = opts;
+  const { lateral = 120, vertical = 160, near = 110, far = 1600, holding = null } = opts;
   const tp = Math.tan((cam.pitch * Math.PI) / 180);
+  /** the cone is 45% wider for the thing already held */
+  const STICK = 1.45;
+
   let best: T | null = null;
   let bestDepth = Infinity;
   for (const target of targets) {
+    const held = holding !== null && target === holding;
+    const slack = held ? STICK : 1;
     const { depth, lateral: off } = project(target, cam);
-    if (depth < near || depth > far || depth >= bestDepth) continue;
-    if (Math.abs(off) > lateral) continue;
-    if (Math.abs(target.y - -depth * tp) > vertical) continue;
-    bestDepth = depth;
+    if (depth < near || depth > far * slack) continue;
+    if (Math.abs(off) > lateral * slack) continue;
+    if (Math.abs(target.y - -depth * tp) > vertical * slack) continue;
+    // a held target only loses to something meaningfully nearer
+    const score = held ? depth * 0.7 : depth;
+    if (score >= bestDepth) continue;
+    bestDepth = score;
     best = target;
   }
   return best;

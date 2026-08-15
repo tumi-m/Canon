@@ -107,7 +107,9 @@ dust in the light.
 | walk | `W A S D` / arrows, or hold the on-screen pad |
 | look | click to capture the mouse, or drag; touch drags to look |
 | take something off the shelf | `E` / `Enter`, or click while the reticle is on it |
-| leave | `Esc` (once to release the mouse, again to leave) |
+| watch full size | `T`, or look at the set and press `E` |
+| change channel | `[` and `]` · `M` mutes |
+| leave | `Esc`, or the button top-left. `Esc` unwinds one layer at a time |
 
 The camera is a real one: continuous acceleration, head bob, collision against
 every piece of furniture, and a reticle that resolves what you are looking at
@@ -158,6 +160,30 @@ Three deliberate constraints:
 
 A link with no video — a Wikipedia page, a film — gets no channel. The set says
 `NO SIGNAL` rather than showing a dead screen.
+
+### Where you keep it
+
+The same canon, the same shelves, the same walk — five buildings. **The den**
+(floorboards, lamps), **the castle library** (oak, stone, green shade), **the
+vault** (steel and concrete), **the seed bank** (cold storage cut into rock),
+**the cinema** (one screen in the dark). Pick before you go in, or change
+without leaving.
+
+A venue is a palette and a vocabulary, not a second implementation. The
+geometry in `world.ts` is shared; every surface reads its colour from a CSS
+custom property that `[data-venue]` overrides in `globals.css`, and the four
+weight tiers get renamed in the building's own words — *the ones that changed
+me* in the den is *sealed* in the vault and *the seed stock* in the bank.
+Adding one is a token block and four names.
+
+### Watching
+
+Walking a 3D room to squint at a screen inside it is a worse way to watch
+something than just watching it. So the set in the room is the *invitation* —
+`T`, or look at it and press `E` — and what you get is the video at full size
+with the room stepped out of the way. The walk loop stops while you watch; the
+dial and the mute stay on screen, and `Esc` puts you back where you were
+standing.
 
 ### Sound: what the room does and does not make
 
@@ -258,6 +284,16 @@ seen to load** — the wiring is tested (ids, embed URLs, channel numbering,
 fallbacks) but the network path is not. That is why a thumbnail that fails
 falls back to the title rather than a broken-image glyph, and it is worth a
 look on the first real deploy.
+
+**Smoothness.** Two thresholds, not one. Culling and the reticle both used a
+single cutoff, so anything sitting near it flipped state every time the camera
+drifted a few pixels — props blinking, the highlight ping-ponging between two
+sleeves, each swap restarting a transition. Both have hysteresis now: showing
+and hiding happen at different distances, and whatever you are already pointing
+at keeps a wider cone. The first cull pass is deliberately strict, because
+everything starts marked visible and a lenient first test leaves the wall
+behind the spawn point switched on — which renders inverted across the view and
+swallows every click aimed at a shelf.
 
 **Frame rate is unverified.** This was built and driven headless, where Chromium
 software-rasterises at a few fps, so no honest number is available. The
