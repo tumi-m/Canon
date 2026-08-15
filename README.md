@@ -182,9 +182,20 @@ the flip card does the same to the HUD. `Esc` unwinds one layer at a time —
 card, then mouse capture, then the room — and leaving returns focus to whatever
 opened it. Contained while you are in it, never a trap.
 
-**Set dressing.** The unlabelled sleeves in the CD wallet and the shoebox are
-the household's own clutter — deliberately anonymous, non-interactive, and
-never canon entries.
+**Nothing in the room is set dressing.** There used to be a CD wallet and a
+shoebox of sticks holding anonymous filler, plus a couch, a coffee table and a
+side table holding nothing at all. They were cut: every sleeve on screen is now
+a real canon entry, and the only things you can walk into are the things
+holding the collection. Deleting them improved the look more than any texture
+did — they were five low-quality objects competing with the four that matter.
+
+**Light.** CSS 3D has no lighting, so the five translucent discs that used to
+stand in for lamps only ever read as smudges. Two pendants remain, each an
+actual object — cord, enamel shade lit along its rim, a hot filament beneath —
+and the light they appear to cast is painted into the walls, floor and ceiling
+as gradients positioned where the pools would fall. That is the only place
+light can honestly live in a renderer that has none, and it costs nothing per
+frame.
 
 ---
 

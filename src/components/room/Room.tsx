@@ -64,8 +64,6 @@ const KEYMAP: Record<string, string> = {
 const FURNITURE_CLASS = {
   shelf: "",
   crate: styles.crate,
-  wallet: styles.wallet,
-  box: styles.box,
 } as const;
 
 /**
@@ -165,7 +163,6 @@ function RoomScene({
     const list: Target[] = [];
     for (const unit of world.units) {
       for (const s of unit.sleeves) {
-        if (s.entry === null) continue;
         list.push({ kind: "sleeve", key: s.key, entry: s.entry, x: s.x, y: s.y, z: s.z });
       }
     }
@@ -500,39 +497,17 @@ function RoomScene({
           {world.lamps.map((lamp) => (
             <div
               key={lamp.key}
-              className={`${styles.lamp} ${lamp.warm ? "" : styles.lampCool}`}
+              className={styles.pendant}
               data-cull="160"
               data-cx={lamp.x}
               data-cz={lamp.z}
               style={{ transform: `translate3d(${lamp.x}px,${lamp.y}px,${lamp.z}px)` }}
-            />
+            >
+              <span className={styles.cord} />
+              <span className={styles.shade} />
+              <span className={styles.bulb} />
+            </div>
           ))}
-          {world.motes.map((z) => (
-            <div
-              key={`m${z}`}
-              className={styles.motes}
-              data-cull="160"
-              data-cx={0}
-              data-cz={z}
-              style={{ transform: `translate3d(0,0,${z}px)` }}
-            />
-          ))}
-
-          {/* the things that make it a room, not a warehouse */}
-          <div
-            className={styles.table}
-            data-cull="200"
-            data-cx={0}
-            data-cz={-60}
-            style={{ transform: "translate3d(0,190px,10px) rotateX(74deg)" }}
-          />
-          <div
-            className={styles.couch}
-            data-cull="240"
-            data-cx={-790}
-            data-cz={-550}
-            style={{ transform: "translate3d(-790px,150px,-550px) rotateY(74deg)" }}
-          />
           <div
             className={`${styles.tv} ${aimKey === "__tv" ? styles.tvAimed : ""}`}
             data-cull="240"
@@ -614,17 +589,20 @@ function RoomScene({
                     <div key={`l${r}`} className={styles.ledge} style={{ top: 22 + r * 208 + 196 }} />
                   ))
                 : null}
-              {unit.filler ? null : <span className={styles.label}>{unit.label}</span>}
+              <span className={styles.label}>{unit.label}</span>
               {unit.sleeves.map((s) => (
                 <SleeveCase
                   key={s.key}
                   node={s}
                   unit={unit}
-                  entry={s.entry === null ? undefined : entries[s.entry]}
+                  entry={entries[s.entry]!}
                   region={region}
                   paid={paid}
                   aimed={aimKey === s.key}
-                  onOpen={() => s.entry !== null && (setOpened(s.entry), setFlipped(false))}
+                  onOpen={() => {
+                    setOpened(s.entry);
+                    setFlipped(false);
+                  }}
                 />
               ))}
             </div>
@@ -661,7 +639,6 @@ function RoomScene({
 
       <div className={styles.shelfList}>
         {world.units
-          .filter((u) => !u.filler)
           .map((unit) => (
             <div
               key={unit.key}
@@ -786,10 +763,8 @@ function RoomScene({
 }
 
 const SIZES = {
-  shelf: { w: 168, h: 196 },
-  crate: { w: 196, h: 176 },
-  wallet: { w: 150, h: 150 },
-  box: { w: 120, h: 120 },
+  shelf: { w: 184, h: 214 },
+  crate: { w: 208, h: 188 },
 } as const;
 
 function SleeveCase({
@@ -797,27 +772,13 @@ function SleeveCase({
 }: {
   node: Sleeve;
   unit: Unit;
-  entry: Entry | undefined;
+  entry: Entry;
   region: Region;
   paid: ReadonlySet<string>;
   aimed: boolean;
   onOpen: () => void;
 }) {
   const size = SIZES[unit.furniture];
-
-  if (!entry) {
-    // the household's own clutter: anonymous, non-interactive set dressing
-    return (
-      <div
-        className={`${styles.sleeve} ${styles.clutter}`}
-        style={{ left: node.left, top: node.top, width: size.w, height: size.h }}
-        aria-hidden="true"
-      >
-        <div className={styles.art} style={{ background: artFor(`clutter${node.seed}`) }} />
-        <div className={styles.band} />
-      </div>
-    );
-  }
 
   const offers = offersFor(entry.work.id, region);
   const here = offers.some((o) => o.provider.kind === "free" || paid.has(o.provider.id));

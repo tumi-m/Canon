@@ -52,9 +52,7 @@ describe("buildWorld", () => {
     // drawn at, or the reticle points somewhere the sleeve is not
     for (const unit of world.units) {
       const theta = (unit.rot * Math.PI) / 180;
-      const widths: Record<string, number> = {
-        shelf: 168, crate: 196, wallet: 150, box: 120,
-      };
+      const widths: Record<string, number> = { shelf: 184, crate: 208 };
       const w = widths[unit.furniture]!;
       for (const s of unit.sleeves) {
         const lx = s.left + w / 2 - unit.width / 2;
@@ -64,14 +62,14 @@ describe("buildWorld", () => {
     }
   });
 
-  it("holds the household's own clutter in the wallet and the shoebox", () => {
-    const wallet = world.units.find((u) => u.furniture === "wallet");
-    const box = world.units.find((u) => u.furniture === "box");
-    expect(wallet?.filler).toBe(true);
-    expect(box?.filler).toBe(true);
-    // clutter is never a canon entry
-    for (const unit of [wallet, box]) {
-      for (const s of unit!.sleeves) expect(s.entry).toBeNull();
+  it("shelves nothing that is not a canon entry", () => {
+    // the cd wallet and the shoebox of sticks were cut: they held anonymous
+    // clutter, not canon, and every sleeve in the room is a real entry now
+    for (const unit of world.units) {
+      expect(unit.sleeves.length).toBeGreaterThan(0);
+      for (const sleeve of unit.sleeves) {
+        expect(entries[sleeve.entry]).toBeDefined();
+      }
     }
   });
 
@@ -85,11 +83,6 @@ describe("buildWorld", () => {
 describe("collide", () => {
   const world = buildWorld(entries);
   const { boxes, bounds } = world;
-
-  it("stops you at the coffee table rather than through it", () => {
-    const [, z] = collide(0, 400, boxes, bounds);
-    expect(z).toBeGreaterThanOrEqual(120 + G.radius);
-  });
 
   it("keeps you inside the room", () => {
     expect(collide(9999, 0, boxes, bounds)[0]).toBe(bounds.xMax);
@@ -152,14 +145,11 @@ describe("aimAt", () => {
 });
 
 describe("nearestUnit", () => {
-  it("names the shelf you are standing at, never the clutter", () => {
+  it("names the shelf you are standing at", () => {
     const world = buildWorld(entries);
-    const shelf = world.units.find((u) => !u.filler)!;
-    const at = nearestUnit(world.units, { x: shelf.fx, z: shelf.fz, yaw: 0, pitch: 0 });
-    expect(at?.key).toBe(shelf.key);
-
-    const wallet = world.units.find((u) => u.furniture === "wallet")!;
-    const atWallet = nearestUnit(world.units, { x: wallet.fx, z: wallet.fz, yaw: 0, pitch: 0 });
-    expect(atWallet?.filler).toBe(false);
+    for (const shelf of world.units) {
+      const at = nearestUnit(world.units, { x: shelf.fx, z: shelf.fz, yaw: 0, pitch: 0 });
+      expect(at?.key).toBe(shelf.key);
+    }
   });
 });

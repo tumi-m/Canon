@@ -31,18 +31,21 @@ export const G = {
   perspective: 700,
 } as const;
 
-/** What a shelf face is made of. Changes how a sleeve is drawn, not where. */
-export type Furniture = "shelf" | "crate" | "wallet" | "box";
+/**
+ * What a shelf face is made of. Changes how a sleeve is drawn, not where.
+ *
+ * There were four kinds. A CD wallet and a shoebox of sticks were cut because
+ * neither held a single canon entry — they were flavour, filled with anonymous
+ * clutter, and they were the worst-looking objects in the room. Everything left
+ * carries the product.
+ */
+export type Furniture = "shelf" | "crate";
 
 const SLEEVE: Record<Furniture, { w: number; h: number; cols: number }> = {
   // a bookcase of standing cases
-  shelf: { w: 168, h: 196, cols: 5 },
+  shelf: { w: 184, h: 214, cols: 5 },
   // a floor crate you flip through: wider, shorter, fewer across
-  crate: { w: 196, h: 176, cols: 4 },
-  // the cd wallet, open on the table — two pages of sleeves
-  wallet: { w: 150, h: 150, cols: 4 },
-  // a shoebox of usb sticks and loose discs
-  box: { w: 120, h: 120, cols: 4 },
+  crate: { w: 208, h: 188, cols: 4 },
 };
 
 const GAP = 12;
@@ -53,11 +56,9 @@ export type Aim = { readonly x: number; readonly y: number; readonly z: number }
 
 export type Sleeve = Aim & {
   readonly key: string;
-  /** index into the canon, or null when this is the household's own clutter */
-  readonly entry: number | null;
+  readonly entry: number;
   readonly left: number;
   readonly top: number;
-  readonly seed: number;
 };
 
 export type Unit = {
@@ -74,13 +75,19 @@ export type Unit = {
   readonly width: number;
   readonly height: number;
   readonly rows: number;
-  readonly filler: boolean;
   readonly sleeves: readonly Sleeve[];
 };
 
 export type Box = { x0: number; x1: number; z0: number; z1: number };
 
-export type Lamp = { key: string; x: number; y: number; z: number; warm: boolean };
+/**
+ * A hanging lamp. There used to be five of these and they were translucent
+ * discs floating in mid-air — CSS 3D has no lights, so a disc pretending to be
+ * one reads as a smudge. Two remain, each an actual object: a shade with a hot
+ * underside. The light they appear to cast is painted into the walls, floor
+ * and ceiling instead, which is the only place light can honestly live here.
+ */
+export type Lamp = { key: string; x: number; y: number; z: number };
 
 export type Section = { readonly name: string; readonly entries: readonly number[] };
 
@@ -88,7 +95,6 @@ export type World = {
   readonly sections: readonly Section[];
   readonly units: readonly Unit[];
   readonly lamps: readonly Lamp[];
-  readonly motes: readonly number[];
   readonly boxes: readonly Box[];
   readonly hatchZ: number;
   readonly bounds: { xMin: number; xMax: number; zMin: number; zMax: number };
@@ -142,10 +148,9 @@ function makeUnit(
   label: string,
   furniture: Furniture,
   entries: readonly number[],
-  filler: number,
   at: { x: number; y: number; z: number; rot: number; tilt?: number },
 ): Unit | null {
-  const count = entries.length + filler;
+  const count = entries.length;
   if (count === 0) return null;
 
   const spec = SLEEVE[furniture];
@@ -168,10 +173,9 @@ function makeUnit(
     const ly = top + spec.h / 2 - height / 2;
     sleeves.push({
       key: `${key}-${i}`,
-      entry: i < entries.length ? entries[i]! : null,
+      entry: entries[i]!,
       left,
       top,
-      seed: hash(`${key}:${i}`),
       x: at.x + lx * cos,
       y: at.y + ly,
       z: at.z - lx * sin,
@@ -190,7 +194,6 @@ function makeUnit(
     width,
     height,
     rows,
-    filler: filler > 0,
     sleeves,
   };
 }
@@ -215,37 +218,12 @@ export function buildWorld(entries: readonly Entry[]): World {
 
   sections.forEach((section, i) => {
     const spot = spots[i % spots.length]!;
-    const unit = makeUnit(`s${i}`, section.name, spot.furniture, section.entries, 0, spot);
+    const unit = makeUnit(`s${i}`, section.name, spot.furniture, section.entries, spot);
     if (unit) units.push(unit);
   });
 
-  // the cd wallet, lying open on the coffee table
-  const wallet = makeUnit("wallet", "the cd wallet", "wallet", [], 8, {
-    x: 0,
-    y: 168,
-    z: 20,
-    rot: 0,
-    tilt: -76,
-  });
-  if (wallet) units.push(wallet);
-
-  // a shoebox of usb sticks and burned discs, under the side table
-  const shoebox = makeUnit("shoebox", "a shoebox of sticks", "box", [], 6, {
-    x: -700,
-    y: 208,
-    z: 300,
-    rot: 34,
-    tilt: -62,
-  });
-  if (shoebox) units.push(shoebox);
-
-  // furniture you cannot walk through
-  boxes.push({ x0: -280, x1: 280, z0: -160, z1: 180 }); // coffee table
-  boxes.push({ x0: -900, x1: -520, z0: 160, z1: 440 }); // side table
-  boxes.push({ x0: 700, x1: 1050, z0: -520, z1: -60 }); // the tv stand
-  boxes.push({ x0: -1050, x1: -560, z0: -760, z1: -340 }); // the couch
+  // the only things you can walk into are the things holding the canon
   for (const unit of units) {
-    if (unit.furniture === "wallet" || unit.furniture === "box") continue;
     const along = unit.width / 2;
     const theta = (unit.rot * Math.PI) / 180;
     const dx = Math.abs(Math.cos(theta)) * along + 60;
@@ -259,21 +237,14 @@ export function buildWorld(entries: readonly Entry[]): World {
   }
 
   const lamps: Lamp[] = [
-    { key: "pendant-a", x: -220, y: -200, z: -520, warm: true },
-    { key: "pendant-b", x: 300, y: -200, z: 140, warm: true },
-    { key: "floor", x: -820, y: -40, z: -480, warm: true },
-    { key: "back", x: 0, y: -120, z: G.backZ + 200, warm: true },
-    { key: "tv", x: 880, y: 40, z: -280, warm: false },
+    { key: "pendant-a", x: -260, y: -196, z: -560 },
+    { key: "pendant-b", x: 300, y: -196, z: 60 },
   ];
-
-  const motes: number[] = [];
-  for (let z = 700; z > G.backZ + 200; z -= 520) motes.push(z);
 
   return {
     sections,
     units,
     lamps,
-    motes,
     boxes,
     hatchZ: G.backZ + 60,
     bounds: {
@@ -348,7 +319,6 @@ export function nearestUnit(units: readonly Unit[], cam: Camera): Unit | undefin
   let best: Unit | undefined;
   let bestDist = Infinity;
   for (const unit of units) {
-    if (unit.filler) continue;
     const d = Math.hypot(unit.fx - cam.x, unit.fz - cam.z);
     if (d < bestDist) {
       bestDist = d;
