@@ -3,10 +3,12 @@
 A personal curated content network. Each person has a public "canon": content that
 shaped them, with a one-line why and where to stream it in the visitor's region.
 
-> **State:** the app does not exist yet. The repo currently holds the spec
-> (`docs/PLAN.md`), the business case (`docs/BUSINESS.md`) and a working
-> single-file prototype (`prototype/canon.html`). The commands below start
-> working at milestone M0, which scaffolds the Next.js app.
+> **State:** M0 is done and the app runs. `/` and `/[handle]` are live, along
+> with the walkable store. There is still no database, no auth and no writes —
+> a canon is a static object in `src/lib/canon.ts`. See `docs/PROGRESS.md` for
+> the milestone-by-milestone state before starting anything.
+>
+> The supabase commands below start working at M1.
 
 ## Commands
 - `npm run dev` · `npm run build` · `npm run typecheck` · `npm run lint`

@@ -1,0 +1,95 @@
+.list {
+  max-width: 760px;
+}
+
+.regions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 22px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+.regionLabel {
+  color: var(--ink-soft);
+  opacity: 0.7;
+  margin-right: 4px;
+}
+.region,
+.regionOn {
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  color: var(--ink-soft);
+}
+.region:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+.regionOn {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.item {
+  padding: 15px 4px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.title {
+  font-size: 1.12rem;
+  text-decoration: none;
+}
+.title:hover {
+  text-decoration: underline;
+}
+/* farza's red tier: the ones that actually changed you */
+.changed {
+  color: var(--red);
+  font-weight: 500;
+}
+
+.why {
+  font-style: italic;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  margin-top: 3px;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
+.offer {
+  color: #fff;
+  padding: 3px 8px;
+  border-radius: 3px;
+  text-decoration: none;
+}
+.offer:hover {
+  color: #fff;
+  opacity: 0.85;
+}
+
+.nowhere {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.credit {
+  opacity: 0.55;
+}

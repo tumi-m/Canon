@@ -1,0 +1,71 @@
+# PROGRESS
+
+Durable memory between sessions. Read this and `docs/PLAN.md` before starting a
+milestone; update it before finishing one.
+
+---
+
+## Where the build is
+
+| Milestone | State |
+|---|---|
+| **M0 · Foundation** | ✅ done |
+| **M1 · Schema & RLS** | ⬜ not started — **blocked**: needs a Supabase project |
+| **M2 · Auth & profile** | ⬜ not started — blocked on M1 |
+| **M3 · Entries & the text view** | 🟡 the *view* is built and server-rendered; the paste-a-link flow, metadata resolution and reordering are not — they need M1/M2 |
+| **M4 · Availability layer** | 🟡 the shape is built (per-region offers, per-item attribution, no synthesised deep links); the live TMDB fetch and Redis cache are not — **blocked**: needs `TMDB_API_KEY` |
+| **M5 · The store** | ✅ ported to React and shipping |
+| **M6 · Tiers, follows, capsules** | ⬜ not started — blocked on M1 |
+| **M7 · Membership** | ⬜ not started — **blocked**: needs Stripe keys |
+| **M8 · Regional archive** | ⬜ not started |
+| **M9 · Launch hardening** | ⬜ not started |
+
+## What shipped
+
+**M0.** Next.js 15 App Router, TypeScript strict (plus `noUncheckedIndexedAccess`),
+Tailwind v4, zod. Vitest for units, Playwright for e2e, GitHub Actions running
+typecheck → lint → test → build → e2e. `.claude/settings.json` carries the
+permissions and the typecheck hook from PLAN §5.
+
+**The presentational product,** built ahead of its milestones because it needs no
+accounts:
+
+- `/` — the front, listing the canons that exist
+- `/[handle]` — a canon, statically generated, server-rendered, readable with
+  javascript switched off. Region is a query param (`?region=us`), so switching
+  region is a plain link and stays shareable.
+- `/[handle]` → **the store** — the walkable CSS-3D video shop, ported from the
+  prototype into `src/components/store/`. Mounted on demand, so it costs nothing
+  to anyone who never opens it.
+
+## What is deliberately *not* built
+
+Everything that needs a credential I do not have. There are no Supabase, Stripe
+or TMDB stubs pretending to work — a fake auth flow is worse than none, because
+it looks finished.
+
+Specifically: no `profiles`/`works`/`shelves`/`entries` tables, **no RLS**, no
+sign-in, no writes of any kind, no payments. The canon is a static object in
+`src/lib/canon.ts`, parsed through the same zod schema an API write will use.
+
+## What the next session needs to know
+
+1. **M1 is the next milestone**, and it is the one that matters. Nothing in
+   `src/lib/schema.ts` is the security boundary — RLS is. The zod schemas exist
+   so the API and the UI agree with the DB, not instead of it.
+2. **The three-place rule is half-wired.** `WHY_MAX` (200) and `NOTE_MAX` (300)
+   live in `src/lib/schema.ts` and are used by the schema and the UI. The M1
+   migration must carry the same numbers as `CHECK` constraints — that is the
+   third place, and it is the one that counts.
+3. **`src/lib/availability.ts` is shaped for the real TMDB response.** M4
+   replaces the seed table, not the callers. Two things must survive that swap:
+   the per-item JustWatch credit (`ATTRIBUTION`, asserted in both the unit and
+   e2e suites) and the rule that a click target is a TMDB watch page, never a
+   synthesised provider deep link.
+4. **The store's geometry is pure and tested** (`src/components/store/world.ts`).
+   Three CSS-3D traps are documented in the README and encoded as tests — no
+   depth buffer, the fixed eye plane, and the fact that the world is authored in
+   arithmetic rather than measured off the DOM. Read those before moving props.
+5. **Frame rate is still unverified.** Everything so far has been driven headless,
+   where Chromium software-rasterises at a few fps. The M5 target of 50fps with
+   60 cases needs checking on real hardware before M5 is called done.
