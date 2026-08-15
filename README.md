@@ -36,12 +36,15 @@ runs typecheck → lint → test → build → e2e on every push and PR.
 ## What is built
 
 - **`/`** — the front.
-- **`/[handle]`** — a canon. Statically generated, server-rendered, and fully
-  readable with javascript switched off. Region is a query param
-  (`?region=us`), so changing region is a plain link and the result is
-  shareable.
-- **the room** — somebody's den, opened from a canon: shelves, a record
-  crate, a CD wallet on the coffee table, a shoebox of sticks.
+- **`/[handle]`** — a canon, in two views. **The wall** (default) is image-led
+  and quiet: YouTube's own artwork, big tiles, a lot of air, and the *why* on
+  the tile rather than hidden behind a hover. **The list** is the reading view.
+  Both are statically generated, server-rendered, and fully readable with
+  javascript switched off — view and region are query params, so any way of
+  looking at a canon is a URL you can send somebody.
+- **the room** — somebody's den, opened from a canon: shelves, a record crate,
+  a CD wallet on the coffee table, a shoebox of sticks, and a television that
+  plays the canon.
 
 **What is deliberately not built:** anything needing a credential this build
 does not have — Supabase, Stripe, TMDB. There are no stubs pretending to work;
@@ -62,6 +65,8 @@ src/lib/schema.ts      zod shapes, and the two character caps
 src/lib/canon.ts       the seed canon
 src/lib/availability.ts  where a thing can be watched, per region
 src/lib/runtime.ts     "1hr 47m" → minutes, and back
+src/lib/youtube.ts     id parsing, embeds, thumbnails, the channel dial
+src/lib/roomSound.ts   procedural footsteps — no assets, off by default
 src/components/room/   the walkable den — world.ts is geometry, Room.tsx draws it
 prototype/canon.html   the original single-file prototype, kept as reference
 ```
@@ -127,6 +132,40 @@ debugging session:
    reticle nothing to hit. A test asserts the rendered markup agrees with the
    model.
 
+### The television
+
+The room has a set, and it plays the canon. Every entry with an embeddable
+video becomes a channel; `T` turns it on, `[` and `]` work the dial, `M` mutes.
+Surfing somebody's canon is the MyRetroTVs trick made personal — instead of a
+generic decade, you are channel-hopping the things that shaped one person.
+
+Three deliberate constraints:
+
+- **Official iframe embed only** — never proxied, never rehosted, so the view
+  counts for whoever made it. `youtube-nocookie.com`, related videos off: this
+  is a shelf, not a feed.
+- **It starts muted**, because browsers block autoplay with sound. Unmuting is
+  one key, and the HUD says so.
+- **The embed takes no pointer events.** The dial lives on the HUD, which keeps
+  pointer lock working and makes surfing feel like a television rather than a
+  web page.
+
+A link with no video — a Wikipedia page, a film — gets no channel. The set says
+`NO SIGNAL` rather than showing a dead screen.
+
+### Sound: what the room does and does not make
+
+The content's sound is YouTube's job. A soundtrack would fight the thing you
+came to watch, so there isn't one.
+
+What was missing is *room* feedback, so `src/lib/roomSound.ts` synthesises it
+in a few hundred bytes of Web Audio: footsteps on floorboards paced by distance
+walked, a click when something comes off the shelf, and a whisper of room tone.
+No audio files, nothing downloaded. It is **off by default** — nobody's first
+second on a page should be noise — it can only start from a user gesture
+because browsers require one, and it ducks itself out of the way whenever the
+television is on.
+
 **Getting out.** The room is an enhancement, never a requirement. `☰ read it as
 a list` returns you to the canon, and `prefers-reduced-motion` disables head
 bob, camera roll and dust drift.
@@ -183,7 +222,8 @@ rewrite.
 
 ## Testing
 
-`npm test` covers the pure layer: runtime parsing, the availability rules above,
+`npm test` covers the pure layer: YouTube id parsing and the channel dial,
+runtime parsing, the availability rules above,
 the character caps, the audience and capsule rules, and the room's geometry —
 shelf layout, collision,
 projection and the aim test.
@@ -194,6 +234,13 @@ room, focus containment, the list escape hatch, and taking something off the
 shelf. The two remaining critical paths — creating a canon, and a capsule
 staying sealed against a hand-crafted request — arrive with M3 and M6, because
 both need the database.
+
+**Two things this environment could not verify.** YouTube's CDN is unreachable
+from the sandbox this was built in, so **no thumbnail and no embed has been
+seen to load** — the wiring is tested (ids, embed URLs, channel numbering,
+fallbacks) but the network path is not. That is why a thumbnail that fails
+falls back to the title rather than a broken-image glyph, and it is worth a
+look on the first real deploy.
 
 **Frame rate is unverified.** This was built and driven headless, where Chromium
 software-rasterises at a few fps, so no honest number is available. The

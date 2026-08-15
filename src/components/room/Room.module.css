@@ -310,6 +310,33 @@
   justify-content: center;
   overflow: hidden;
 }
+.tvAimed {
+  box-shadow:
+    0 0 90px rgba(120, 190, 255, 0.3),
+    0 0 0 3px rgba(159, 228, 196, 0.7);
+}
+/* the embed itself. pointer events off: the dial lives on the hud, so the
+   room keeps the mouse and pointer lock keeps working. */
+.screen {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}
+.osd {
+  position: absolute;
+  top: 14px;
+  left: 18px;
+  z-index: 3;
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0.18em;
+  color: #7dff9f;
+  text-shadow: 0 0 10px rgba(125, 255, 159, 0.9);
+  pointer-events: none;
+}
 .tv b {
   font-family: var(--mono);
   font-size: 14px;

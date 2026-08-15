@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import type { Entry, Region } from "@/lib/schema";
 import { WEIGHT_LABEL } from "@/lib/schema";
 import { offersFor, regionName } from "@/lib/availability";
+import { channelLabel, channelsFrom, embedUrl, surf } from "@/lib/youtube";
+import { createRoomSound, STRIDE, type RoomSound } from "@/lib/roomSound";
 import {
   aimAt,
   artFor,
@@ -30,7 +32,7 @@ type Props = {
 };
 
 type Target = Aim & {
-  readonly kind: "sleeve" | "capsule";
+  readonly kind: "sleeve" | "capsule" | "tv";
   readonly key: string;
   readonly entry: number | null;
 };
@@ -50,6 +52,8 @@ type Live = {
   raf: number;
   last: number;
   frame: number;
+  /** distance walked since the last footstep */
+  stride: number;
 };
 
 const KEYMAP: Record<string, string> = {
@@ -113,8 +117,48 @@ function RoomScene({
   const touch = useRef(false);
   const live = useRef<Live>({
     x: 0, z: G.spawnZ, yaw: 0, pitch: 0, vx: 0, vz: 0, bob: 0,
-    keys: new Set(), stick: { x: 0, y: 0 }, aim: null, raf: 0, last: 0, frame: 0,
+    keys: new Set(), stick: { x: 0, y: 0 }, aim: null, raf: 0, last: 0, frame: 0, stride: 0,
   });
+
+  /* ---------- the television ---------- */
+  const channels = useMemo(() => channelsFrom(entries), [entries]);
+  const [tvOn, setTvOn] = useState(false);
+  const [channel, setChannel] = useState(0);
+  const [muted, setMuted] = useState(true);
+  const playing = tvOn ? channels[channel] : undefined;
+
+  /* ---------- room sound ---------- */
+  const [audible, setAudible] = useState(false);
+  const sound = useRef<RoomSound | null>(null);
+
+  const toggleSound = useCallback(() => {
+    setAudible((on) => {
+      if (on) {
+        sound.current?.close();
+        sound.current = null;
+        return false;
+      }
+      // must be built inside the gesture: browsers refuse otherwise
+      sound.current = createRoomSound();
+      return sound.current !== null;
+    });
+  }, []);
+
+  // the room goes quiet while the television is talking
+  useEffect(() => {
+    sound.current?.duck(tvOn);
+  }, [tvOn]);
+  useEffect(() => () => sound.current?.close(), []);
+
+  const tune = useCallback(
+    (step: number) => {
+      if (channels.length === 0) return;
+      setTvOn(true);
+      setChannel((c) => surf(channels, c, step));
+      sound.current?.clack();
+    },
+    [channels],
+  );
 
   /** Reticle targets: every real sleeve, plus the capsule at the back. */
   const targets = useMemo<Target[]>(() => {
@@ -126,16 +170,23 @@ function RoomScene({
       }
     }
     list.push({ kind: "capsule", key: "__capsule", entry: null, x: 0, y: 0, z: world.hatchZ });
+    list.push({ kind: "tv", key: "__tv", entry: null, x: 1035, y: -40, z: -280 });
     return list;
   }, [world]);
 
   const activate = useCallback(
     (target: Target | null) => {
       if (!target) return;
-      if (target.kind === "capsule") onCapsule();
-      else if (target.entry !== null) {
+      if (target.kind === "capsule") return onCapsule();
+      if (target.kind === "tv") {
+        setTvOn((on) => !on);
+        sound.current?.clack();
+        return;
+      }
+      if (target.entry !== null) {
         setOpened(target.entry);
         setFlipped(false);
+        sound.current?.pick();
       }
     },
     [onCapsule],
@@ -200,7 +251,13 @@ function RoomScene({
       const [nx, nz] = collide(L.x + L.vx * dt, L.z + L.vz * dt, world.boxes, world.bounds);
       L.x = nx;
       L.z = nz;
-      L.bob += Math.hypot(L.vx, L.vz) * dt * 0.024;
+      const speed = Math.hypot(L.vx, L.vz);
+      L.bob += speed * dt * 0.024;
+      L.stride += speed * dt;
+      if (L.stride > STRIDE) {
+        L.stride = 0;
+        sound.current?.step();
+      }
       apply();
     };
 
@@ -217,6 +274,8 @@ function RoomScene({
           if (!hit) setAimLabel(null);
           else if (hit.kind === "capsule")
             setAimLabel({ title: "the capsule", hint: "E · SEALED UNTIL ITS DATE" });
+          else if (hit.kind === "tv")
+            setAimLabel({ title: "the television", hint: "E · SURF THE CANON" });
           else
             setAimLabel({
               title: entries[hit.entry!]?.work.title ?? "",
@@ -253,6 +312,26 @@ function RoomScene({
         e.preventDefault();
         return;
       }
+      if (k === "t") {
+        setTvOn((on) => !on);
+        e.preventDefault();
+        return;
+      }
+      if (k === "]" || k === ".") {
+        tune(1);
+        e.preventDefault();
+        return;
+      }
+      if (k === "[" || k === ",") {
+        tune(-1);
+        e.preventDefault();
+        return;
+      }
+      if (k === "m") {
+        setMuted((m) => !m);
+        e.preventDefault();
+        return;
+      }
       if (k === "escape") {
         if (opened !== null) setOpened(null);
         else if (document.pointerLockElement === rootRef.current) document.exitPointerLock();
@@ -272,7 +351,7 @@ function RoomScene({
       document.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
     };
-  }, [activate, onLeave, opened]);
+  }, [activate, onLeave, opened, tune]);
 
   /* ---------- looking around ---------- */
   useEffect(() => {
@@ -455,17 +534,55 @@ function RoomScene({
             style={{ transform: "translate3d(-790px,150px,-550px) rotateY(74deg)" }}
           />
           <div
-            className={styles.tv}
+            className={`${styles.tv} ${aimKey === "__tv" ? styles.tvAimed : ""}`}
             data-cull="240"
             data-cx={1035}
             data-cz={-280}
             style={{ transform: "translate3d(1035px,-40px,-280px) rotateY(-90deg)" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setTvOn((on) => !on);
+            }}
           >
-            <b>
-              NOW PLAYING
-              <br />
-              {at ?? "nothing"}
-            </b>
+            {playing ? (
+              <>
+                {/*
+                  Official iframe embed only (plan §6) — never proxied, never
+                  rehosted, so the view counts for whoever made it. Pointer
+                  events are off so the room keeps the mouse: the dial is on
+                  the hud, which is what makes surfing feel like a television
+                  rather than a web page.
+                */}
+                <iframe
+                  key={`${playing.videoId}:${muted ? "m" : "s"}`}
+                  className={styles.screen}
+                  src={embedUrl(playing.videoId, { muted })}
+                  title={playing.title}
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                />
+                <span className={styles.osd}>
+                  {channelLabel(channel)}
+                  {muted ? " · MUTED" : ""}
+                </span>
+              </>
+            ) : (
+              <b>
+                {channels.length ? (
+                  <>
+                    OFF
+                    <br />
+                    {channels.length} CHANNELS
+                  </>
+                ) : (
+                  <>
+                    NO SIGNAL
+                    <br />
+                    NOTHING EMBEDDABLE
+                  </>
+                )}
+              </b>
+            )}
           </div>
 
           {world.units.map((unit) => (
@@ -559,7 +676,9 @@ function RoomScene({
         <button ref={exitRef} className={styles.exit} onClick={onLeave}>
           ✕ let yourself out
         </button>
-        <span className={styles.now}>{at ?? `${displayName}'s room`}</span>
+        <span className={styles.now}>
+          {playing ? `${channelLabel(channel)} · ${playing.title}` : (at ?? `${displayName}'s room`)}
+        </span>
       </div>
 
       <div className={`${styles.hud} ${styles.hudBot}`} inert={opened !== null ? true : undefined}>
@@ -567,6 +686,25 @@ function RoomScene({
         <button title="step back" {...hold("s")}>▼</button>
         <button title="step forward" {...hold("w")}>▲</button>
         <button title="step right" {...hold("d")}>▶</button>
+        <button onClick={() => setTvOn((on) => !on)} title="the television (t)">
+          {tvOn ? "◼ tv off" : "▶ tv on"}
+        </button>
+        {tvOn && channels.length > 0 ? (
+          <>
+            <button onClick={() => tune(-1)} title="previous channel ([)">
+              ⏮
+            </button>
+            <button onClick={() => tune(1)} title="next channel (])">
+              ⏭
+            </button>
+            <button onClick={() => setMuted((m) => !m)} title="mute (m)">
+              {muted ? "🔇 unmute" : "🔊 mute"}
+            </button>
+          </>
+        ) : null}
+        <button onClick={toggleSound} title="room sound — footsteps, not a soundtrack">
+          {audible ? "◉ room sound" : "○ room sound"}
+        </button>
         <button onClick={onBrowseList}>☰ read it as a list</button>
         <span className={styles.hint}>
           {coarse

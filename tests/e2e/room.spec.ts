@@ -50,7 +50,7 @@ test.describe("the room", () => {
     await page.getByRole("button", { name: "read it as a list" }).click();
     await expect(page.locator("[data-canon-room]")).toHaveCount(0);
     await expect(page.getByText("same shelves, read as a list.")).toBeVisible();
-    await expect(page.getByText("making of gta 1, 1996")).toBeVisible();
+    await expect(page.getByText("making of gta 1, 1996").first()).toBeVisible();
   });
 
   test("opens a case and shows its why and where to watch", async ({ page }) => {

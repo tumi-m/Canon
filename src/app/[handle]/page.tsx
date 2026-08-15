@@ -5,11 +5,13 @@ import { allHandles, getCanon } from "@/lib/canon";
 import { isKnownRegion, PROVIDERS, regionName } from "@/lib/availability";
 import { formatMinutes, totalMinutes } from "@/lib/runtime";
 import CanonList from "@/components/CanonList";
+import CanonGallery from "@/components/CanonGallery";
+import ViewSwitch from "@/components/ViewSwitch";
 import RoomLauncher from "@/components/RoomLauncher";
 import styles from "./page.module.css";
 
 type Params = { handle: string };
-type Search = { region?: string };
+type Search = { region?: string; view?: string };
 
 /** Every canon is static until M2 puts profiles in Postgres. */
 export function generateStaticParams(): Params[] {
@@ -39,13 +41,15 @@ export default async function CanonPage({
   searchParams: Promise<Search>;
 }) {
   const { handle } = await params;
-  const { region: requested } = await searchParams;
+  const { region: requested, view: requestedView } = await searchParams;
   const canon = getCanon(handle);
   if (!canon) notFound();
 
   // region comes from the profile, overridable by the visitor
   const region =
     requested && isKnownRegion(requested) ? requested : canon.region;
+  // the wall is the default: taste reads faster as pictures than as a list
+  const view = requestedView === "list" ? "list" : "wall";
 
   const runtime = formatMinutes(totalMinutes(canon.entries.map((e) => e.work.runtime)));
   const changed = canon.entries.filter((e) => e.weight === 3).length;
@@ -93,7 +97,13 @@ export default async function CanonPage({
         </div>
       </section>
 
-      <CanonList entries={canon.entries} region={region} handle={canon.handle} />
+      <ViewSwitch handle={canon.handle} region={region} view={view} />
+
+      {view === "list" ? (
+        <CanonList entries={canon.entries} region={region} />
+      ) : (
+        <CanonGallery entries={canon.entries} region={region} />
+      )}
 
       <footer className={styles.footer}>
         <span>canon.</span>

@@ -1,7 +1,6 @@
-import Link from "next/link";
 import type { Entry, Region } from "@/lib/schema";
 import { WEIGHT_LABEL } from "@/lib/schema";
-import { offersFor, regionName, REGIONS } from "@/lib/availability";
+import { offersFor, regionName } from "@/lib/availability";
 import styles from "./CanonList.module.css";
 
 /**
@@ -11,28 +10,12 @@ import styles from "./CanonList.module.css";
 export default function CanonList({
   entries,
   region,
-  handle,
 }: {
   entries: readonly Entry[];
   region: Region;
-  handle: string;
 }) {
   return (
     <div className={styles.list}>
-      <div className={styles.regions}>
-        <span className={styles.regionLabel}>where you are</span>
-        {Object.entries(REGIONS).map(([code, name]) => (
-          <Link
-            key={code}
-            href={`/${handle}?region=${code}`}
-            className={code === region ? styles.regionOn : styles.region}
-            scroll={false}
-          >
-            {name}
-          </Link>
-        ))}
-      </div>
-
       {entries.map((entry) => {
         const offers = offersFor(entry.work.id, region);
         return (

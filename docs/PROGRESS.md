@@ -10,9 +10,10 @@ milestone; update it before finishing one.
 | Milestone | State |
 |---|---|
 | **M0 · Foundation** | ✅ done |
-| **M1 · Schema & RLS** | ⬜ not started — **blocked**: needs a Supabase project |
-| **M2 · Auth & profile** | ⬜ not started — blocked on M1 |
+| **M1 · Schema & RLS** | 🟡 the migration is **written and waiting for your approval** at `supabase/migrations/0001_canon_init.sql` — not applied, per CLAUDE.md #2. Applying it needs a Supabase project |
+| **M2 · Auth & profile** | ⬜ not started — blocked on M1. Sign-in is the next real feature and needs the database first |
 | **M3 · Entries & the text view** | 🟡 the *view* is built and server-rendered; the paste-a-link flow, metadata resolution and reordering are not — they need M1/M2 |
+| **M3.5 · YouTube** | ✅ id parsing, embeds, thumbnails, and the channel dial in the room |
 | **M4 · Availability layer** | 🟡 the shape is built (per-region offers, per-item attribution, no synthesised deep links); the live TMDB fetch and Redis cache are not — **blocked**: needs `TMDB_API_KEY` |
 | **M5 · The room** | ✅ ported to React and shipping — reframed from a video shop to a den |
 | **M6 · Audiences, invites, capsules** | 🟡 the *shapes* exist in `src/lib/schema.ts`; **nothing is enforced** — blocked on M1 |
@@ -46,6 +47,12 @@ yours and you name who walks into it. `audienceSchema` carries `private` /
 `capsuleSchema` describes a shelf sealed until a date and addressed to named
 people — the thing a canon leaves behind.
 
+**The television and the wall.** Every embeddable entry is a channel you can
+surf from inside the room (official iframe, muted start, HUD dial). The profile
+gained a second view — the wall — which is image-led and uses YouTube's own
+thumbnail CDN. Room sound is synthesised, off by default, and ducks under the
+television.
+
 ## What is deliberately *not* built
 
 Everything that needs a credential I do not have. There are no Supabase, Stripe
@@ -62,7 +69,11 @@ anything. A capsule that is only sealed in a component is not sealed.
 
 ## What the next session needs to know
 
-1. **M1 is the next milestone**, and it is the one that matters. Nothing in
+1. **M1 is the next milestone, and the SQL is already written.** Read
+   `supabase/migrations/0001_canon_init.sql`, check the two things its header
+   asks you to check, then apply it yourself — `supabase db push` is in the
+   agent's deny list on purpose. Sign-in (M2) cannot start before it.
+2. **M1 is the one that matters.** Nothing in
    `src/lib/schema.ts` is the security boundary — RLS is. The zod schemas exist
    so the API and the UI agree with the DB, not instead of it.
 2. **The audience model needs the RLS predicate, not a component.** The four
@@ -84,6 +95,8 @@ anything. A capsule that is only sealed in a component is not sealed.
    Three CSS-3D traps are documented in the README and encoded as tests — no
    depth buffer, the fixed eye plane, and the fact that the world is authored in
    arithmetic rather than measured off the DOM. Read those before moving props.
-6. **Frame rate is still unverified.** Everything so far has been driven headless,
-   where Chromium software-rasterises at a few fps. The M5 target of 50fps needs
-   checking on real hardware before M5 is called done.
+7. **Two things this environment could not verify.** YouTube's CDN is
+   unreachable from the sandbox, so no thumbnail and no embed has been *seen*
+   to load — the wiring is unit-tested, the network path is not. And frame rate
+   is still unverified: everything has been driven headless, where Chromium
+   software-rasterises at a few fps. Both want a look on the first real deploy.

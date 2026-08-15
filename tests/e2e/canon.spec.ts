@@ -16,13 +16,11 @@ test.describe("a canon", () => {
 
   test("shows different providers per region, with the credit on every item", async ({ page }) => {
     await page.goto("/tumelo?region=us");
-    const jiro = page.locator("article").filter({ hasText: "jiro dreams of sushi" });
-    await expect(jiro.getByRole("link", { name: "hbo max" })).toBeVisible();
+    await expect(page.getByText("hbo max").first()).toBeVisible();
 
-    await page.goto("/tumelo?region=nz");
-    const jiroNz = page.locator("article").filter({ hasText: "jiro dreams of sushi" });
-    await expect(jiroNz.getByRole("link", { name: "prime video" })).toBeVisible();
-    await expect(jiroNz.getByRole("link", { name: "hbo max" })).toHaveCount(0);
+    await page.goto("/tumelo?region=nz&view=list");
+    await expect(page.getByText("prime video").first()).toBeVisible();
+    await expect(page.getByText("hbo max")).toHaveCount(0);
 
     // plan §6: attribution is per item, not once in a footer
     const credits = page.getByText("via JustWatch / TMDB");
@@ -30,8 +28,8 @@ test.describe("a canon", () => {
   });
 
   test("never synthesises a provider deep link", async ({ page }) => {
-    await page.goto("/tumelo?region=us");
-    for (const href of await page.locator("article a[href]").evaluateAll((as) =>
+    await page.goto("/tumelo?region=us&view=list");
+    for (const href of await page.locator("main a[href]").evaluateAll((as) =>
       (as as HTMLAnchorElement[]).map((a) => a.href),
     )) {
       expect(href).not.toContain("netflix.com");
