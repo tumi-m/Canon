@@ -544,6 +544,7 @@ function RoomScene({
               setTvOn((on) => !on);
             }}
           >
+            <span className={styles.tube}>
             {playing ? (
               <>
                 {/*
@@ -567,22 +568,28 @@ function RoomScene({
                 </span>
               </>
             ) : (
-              <b>
-                {channels.length ? (
-                  <>
-                    OFF
-                    <br />
-                    {channels.length} CHANNELS
-                  </>
-                ) : (
-                  <>
-                    NO SIGNAL
-                    <br />
-                    NOTHING EMBEDDABLE
-                  </>
-                )}
-              </b>
+              <>
+                <span className={styles.static} />
+                <b>
+                  {channels.length ? (
+                    <>
+                      OFF
+                      <br />
+                      {channels.length} CHANNELS
+                    </>
+                  ) : (
+                    <>
+                      NO SIGNAL
+                      <br />
+                      NOTHING EMBEDDABLE
+                    </>
+                  )}
+                </b>
+              </>
             )}
+            </span>
+            <span className={styles.grille} />
+            <span className={`${styles.power} ${tvOn ? styles.powerOn : ""}`} />
           </div>
 
           {world.units.map((unit) => (

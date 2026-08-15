@@ -45,15 +45,23 @@
   margin-left: -1050px;
   margin-top: -1250px;
   transform: translateY(290px) rotateX(90deg);
-  /* floorboards, warm and worn */
+  /* floorboards: grain, a shadowed seam and a bevel per board */
   background:
+    var(--tex-wood),
     repeating-linear-gradient(
       90deg,
-      rgba(0, 0, 0, 0.22) 0 2px,
-      transparent 2px 168px
+      rgba(0, 0, 0, 0.5) 0 3px,
+      rgba(255, 210, 150, 0.05) 3px 6px,
+      transparent 6px 172px
     ),
-    repeating-linear-gradient(#5a3d26 0 96px, #64452c 96px 192px);
-  box-shadow: inset 0 0 260px rgba(0, 0, 0, 0.75);
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.14) 0 1px,
+      transparent 1px 340px
+    ),
+    repeating-linear-gradient(90deg, #593c26 0 172px, #5f4129 172px 344px);
+  background-blend-mode: overlay, normal, normal, normal;
+  box-shadow: inset 0 0 300px rgba(0, 0, 0, 0.82);
 }
 /* the rug the room is arranged around */
 .rug {
@@ -63,9 +71,15 @@
   margin-top: -500px;
   border-radius: 12px;
   background:
-    radial-gradient(ellipse at center, rgba(196, 118, 74, 0.5), transparent 72%),
-    repeating-linear-gradient(46deg, #6d3326 0 34px, #7a3a2b 34px 68px);
-  box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
+    var(--tex-weave),
+    radial-gradient(ellipse at center, rgba(214, 132, 84, 0.42), transparent 70%),
+    repeating-linear-gradient(46deg, #6d3326 0 30px, #7a3a2b 30px 60px),
+    repeating-linear-gradient(-46deg, rgba(0, 0, 0, 0.16) 0 30px, transparent 30px 60px);
+  background-blend-mode: overlay, normal, normal, normal;
+  border: 14px solid #58241b;
+  box-shadow:
+    0 0 60px rgba(0, 0, 0, 0.55),
+    inset 0 0 90px rgba(0, 0, 0, 0.4);
 }
 .ceil {
   width: 2100px;
@@ -79,9 +93,13 @@
   height: 590px;
   margin-top: -300px;
   background:
-    linear-gradient(transparent 0 87%, rgba(0, 0, 0, 0.5) 87% 92%, transparent 92%),
-    linear-gradient(transparent 0 13%, rgba(255, 220, 170, 0.07) 13% 14.5%, transparent 14.5%),
+    var(--tex-grain),
+    linear-gradient(transparent 0 87%, rgba(0, 0, 0, 0.55) 87% 92.5%, rgba(255, 220, 170, 0.05) 92.5% 93.5%, transparent 93.5%),
+    linear-gradient(transparent 0 13%, rgba(255, 220, 170, 0.08) 13% 14.5%, transparent 14.5%),
     linear-gradient(#4a3627 0%, #33251b 46%, #241812 100%);
+  background-blend-mode: overlay, normal, normal, normal;
+  /* light falls off toward the corners; without this the room reads as a box */
+  box-shadow: inset 0 -120px 200px -60px rgba(0, 0, 0, 0.8);
 }
 .wallSide {
   width: 2500px;
@@ -127,32 +145,59 @@
 
 /* ---------- furniture ---------- */
 .unit {
-  border: 8px solid #2b1c11;
-  background: linear-gradient(#3d2a1a 0%, #2c1d12 60%, #1d130c 100%);
+  border: 10px solid #241708;
+  background:
+    var(--tex-wood),
+    linear-gradient(#43301e 0%, #2e1f13 58%, #1b120b 100%);
+  background-blend-mode: overlay, normal;
   box-shadow:
-    inset 0 0 70px rgba(0, 0, 0, 0.72),
-    0 0 60px rgba(255, 190, 120, 0.05);
+    /* the carcass is deeper than the frame; shade the back of it */
+    inset 0 0 90px rgba(0, 0, 0, 0.85),
+    inset 0 8px 18px rgba(0, 0, 0, 0.7),
+    /* a lit lip along the top edge */
+    inset 0 2px 0 rgba(255, 216, 168, 0.14),
+    /* contact shadow: without one, furniture floats */
+    0 30px 50px rgba(0, 0, 0, 0.6);
 }
 /* a floor crate of records, leaning back */
 .crate {
-  border-color: #34220f;
-  border-width: 12px;
-  background: linear-gradient(#6b4620 0%, #462d14 62%, #2b1a0c 100%);
+  border-color: #2e1d0c;
+  border-width: 14px;
+  background:
+    var(--tex-grain),
+    linear-gradient(#754d23 0%, #4a2f15 60%, #2b1a0c 100%);
+  background-blend-mode: overlay, normal;
   box-shadow:
-    inset 0 0 60px rgba(0, 0, 0, 0.6),
-    0 22px 44px rgba(0, 0, 0, 0.6);
+    inset 0 0 60px rgba(0, 0, 0, 0.62),
+    inset 0 2px 0 rgba(255, 216, 168, 0.16),
+    0 26px 46px rgba(0, 0, 0, 0.68);
 }
 /* the cd wallet, open on the table */
 .wallet {
-  border: 10px solid #1d1a17;
-  border-radius: 6px;
-  background: linear-gradient(#2a2621, #1a1714);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+  border: 12px solid #171412;
+  border-radius: 8px;
+  /* nylon: fine weave, a spine crease down the middle, a zip highlight */
+  background:
+    var(--tex-weave),
+    linear-gradient(90deg, transparent 48.4%, rgba(0, 0, 0, 0.65) 49.6% 50.4%, transparent 51.6%),
+    linear-gradient(#332e28, #1c1815);
+  background-blend-mode: overlay, normal, normal;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 236, 206, 0.1),
+    0 24px 54px rgba(0, 0, 0, 0.7);
 }
 /* a shoebox of sticks and burned discs */
 .box {
-  border: 8px solid #6b5636;
-  background: linear-gradient(#8a6f45, #6b5636);
+  border: 10px solid #5d4a2e;
+  /* cardboard: fibre, a lid seam, corners darkened by handling */
+  background:
+    var(--tex-card),
+    linear-gradient(#9a7c4e 0%, #7a6139 46%, #5f4b2c 100%);
+  background-blend-mode: overlay, normal;
+  box-shadow:
+    inset 0 0 40px rgba(0, 0, 0, 0.45),
+    inset 0 2px 0 rgba(255, 236, 206, 0.14),
+    0 18px 36px rgba(0, 0, 0, 0.6);
 }
 /* the ledge each row stands on */
 .ledge {
@@ -190,16 +235,31 @@
 /* ---------- a sleeve, with actual thickness ---------- */
 .sleeve {
   position: absolute;
-  background: #120e0b;
+  background: #0d0a08;
   cursor: pointer;
   transform: translateZ(18px);
   transform-style: preserve-3d;
   transition:
     transform 0.2s var(--ease),
     box-shadow 0.2s var(--ease);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 236, 206, 0.07),
+    0 8px 16px rgba(0, 0, 0, 0.7);
   padding: 0;
   text-align: left;
+}
+/* the gloss sweep across a case, which is what makes it read as plastic */
+.sleeve::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    114deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.03) 18%,
+    transparent 38%
+  );
 }
 .sleeve::before {
   content: "";
@@ -218,7 +278,19 @@
   display: flex;
   align-items: flex-end;
   padding: 8px;
-  box-shadow: inset 0 -40px 40px rgba(0, 0, 0, 0.45);
+  /* printed card, not a flat fill */
+  background-blend-mode: overlay;
+  box-shadow:
+    inset 0 -44px 40px rgba(0, 0, 0, 0.5),
+    inset 0 14px 26px rgba(255, 255, 255, 0.06);
+}
+.art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--tex-card);
+  opacity: 0.5;
+  mix-blend-mode: overlay;
 }
 .art span {
   font-family: var(--mono);
@@ -233,7 +305,12 @@
   right: 4px;
   bottom: 4px;
   height: 17px;
-  background: #e8dcc0;
+  /* the printed strip on the case, slightly aged */
+  background:
+    var(--tex-card),
+    linear-gradient(#efe4ca, #ded0b0);
+  background-blend-mode: overlay, normal;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
   display: flex;
   align-items: center;
   padding: 0 5px;
@@ -282,38 +359,131 @@
   transform-origin: center;
   /* tilted a little off flat so the top catches the lamps instead of
      disappearing edge-on at eye level */
-  background: linear-gradient(#6a4a2c, #402b16);
-  border: 6px solid #2a1a0d;
-  border-radius: 8px;
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.65);
+  background:
+    var(--tex-wood),
+    linear-gradient(#74522f, #402b16);
+  background-blend-mode: overlay, normal;
+  border: 7px solid #241708;
+  border-radius: 10px;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 226, 184, 0.18),
+    0 34px 62px rgba(0, 0, 0, 0.7);
 }
 .couch {
   width: 700px;
   height: 300px;
   margin-left: -350px;
   margin-top: -150px;
-  background: linear-gradient(#4b3b52, #2f2434);
-  border-radius: 10px 10px 4px 4px;
-  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.6);
+  /* upholstery: weave, two cushion seams, a lit top roll */
+  background:
+    var(--tex-weave),
+    linear-gradient(90deg, transparent 32%, rgba(0, 0, 0, 0.45) 33% 34%, transparent 35%),
+    linear-gradient(90deg, transparent 65%, rgba(0, 0, 0, 0.45) 66% 67%, transparent 68%),
+    linear-gradient(#5b4864 0%, #443552 46%, #261d2f 100%);
+  background-blend-mode: overlay, normal, normal, normal;
+  border-radius: 14px 14px 5px 5px;
+  box-shadow:
+    inset 0 4px 0 rgba(255, 236, 206, 0.12),
+    inset 0 -30px 40px rgba(0, 0, 0, 0.5),
+    0 26px 48px rgba(0, 0, 0, 0.68);
 }
 .tv {
-  width: 740px;
-  height: 420px;
-  margin-left: -370px;
-  margin-top: -210px;
-  background: #0a0d0c;
-  border: 14px solid #191512;
-  border-radius: 8px;
-  box-shadow: 0 0 90px rgba(120, 190, 255, 0.14);
+  width: 760px;
+  height: 470px;
+  margin-left: -380px;
+  margin-top: -235px;
+  /* moulded plastic: a lit top edge, a shadowed underside, grain over both */
+  background:
+    var(--tex-grain),
+    linear-gradient(#4a423b 0%, #322b26 18%, #241e1a 62%, #14100e 100%);
+  background-blend-mode: overlay, normal;
+  border-radius: 26px 26px 16px 16px;
+  padding: 34px 34px 62px;
+  box-shadow:
+    inset 0 3px 0 rgba(255, 234, 200, 0.16),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.8),
+    0 40px 70px rgba(0, 0, 0, 0.75);
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+}
+/* the tube: recessed behind the bezel, with a curved black surround */
+.tube {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 40px / 30px;
   overflow: hidden;
+  background: #05080a;
+  box-shadow:
+    inset 0 0 0 5px #0b0908,
+    inset 0 0 42px rgba(0, 0, 0, 0.95),
+    0 0 0 2px rgba(255, 234, 200, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* scanlines, a shadow mask and the corner vignette a real tube has */
+.tube::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.32) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(255, 0, 0, 0.05) 0 1px, rgba(0, 255, 0, 0.05) 1px 2px, rgba(0, 0, 255, 0.05) 2px 3px),
+    radial-gradient(ellipse at 50% 50%, transparent 52%, rgba(0, 0, 0, 0.72) 100%);
+}
+/* glass: one broad reflection across the top-left, the giveaway that it is
+   a screen you are looking at rather than a picture of one */
+.tube::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    142deg,
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.05) 16%,
+    transparent 42%
+  );
+}
+/* the speaker grille and a power lamp, under the tube */
+.grille {
+  position: absolute;
+  left: 40px;
+  right: 40px;
+  bottom: 20px;
+  height: 26px;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.6) 0 3px, rgba(255, 230, 190, 0.05) 3px 7px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.power {
+  position: absolute;
+  right: 48px;
+  bottom: 26px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #3a1a12;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.powerOn {
+  background: #ff6a3d;
+  box-shadow: 0 0 16px 4px rgba(255, 106, 61, 0.75);
 }
 .tvAimed {
   box-shadow:
-    0 0 90px rgba(120, 190, 255, 0.3),
-    0 0 0 3px rgba(159, 228, 196, 0.7);
+    inset 0 3px 0 rgba(255, 234, 200, 0.16),
+    0 40px 70px rgba(0, 0, 0, 0.75),
+    0 0 0 3px rgba(159, 228, 196, 0.6);
 }
 /* the embed itself. pointer events off: the dial lives on the hud, so the
    room keeps the mouse and pointer lock keeps working. */
@@ -324,6 +494,18 @@
   height: 100%;
   border: 0;
   pointer-events: none;
+  z-index: 2;
+}
+/* dead air: static, not a flat panel */
+.static {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    var(--tex-card),
+    radial-gradient(ellipse at 50% 45%, #16211b 0%, #070b09 78%);
+  background-blend-mode: overlay, normal;
+  opacity: 0.9;
 }
 .osd {
   position: absolute;

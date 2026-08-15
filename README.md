@@ -28,8 +28,14 @@ database lands in M1. Copy `.env.example` to `.env.local` when that changes.
 | `npm test` | vitest — the pure layer |
 | `npm run test:e2e` | playwright — the critical paths |
 
-Deploying to Vercel needs no configuration: import the repo and it builds. CI
-runs typecheck → lint → test → build → e2e on every push and PR.
+Deploying to Vercel: import the repo and it builds. `vercel.json` pins
+`"framework": "nextjs"` — without it, a project whose Framework Preset has been
+set to "Other" looks for a `public/` directory after the build and fails with
+*No Output Directory named "public"*. Next builds to `.next`; there is no
+`public/` here and adding an empty one would "fix" the error by deploying a
+static shell with no app in it.
+
+CI runs typecheck → lint → test → build → e2e on every push and PR.
 
 ---
 
