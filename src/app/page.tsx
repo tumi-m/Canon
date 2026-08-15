@@ -20,9 +20,10 @@ export default function Home() {
           the content that <em>made you</em>
         </h1>
         <p className={styles.lede}>
-          one page. the films, videos, records and essays that actually changed
-          you — each with a line on why, and where to watch it from where you
-          are standing. not a feed. a profile.
+          the films, videos, records and essays that actually changed you — each
+          with a line on why, and where to watch it from where you are standing.
+          a room you can walk into, shown to the people you invite, and left to
+          the ones who come after. not a feed.
         </p>
 
         <div className={styles.canons}>
@@ -40,8 +41,10 @@ export default function Home() {
         </div>
 
         <p className={styles.state}>
-          early build. the canon, the availability layer and the walkable store
-          are live; auth, the database and memberships are the next milestones.
+          early build. the canon, the availability layer and the walkable room
+          are live. a canon is meant to be yours — shown to the people you
+          invite, and left to the ones who come after — but nothing is locked
+          yet: auth and the database are the next milestones.
         </p>
       </section>
 

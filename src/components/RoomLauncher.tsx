@@ -2,24 +2,26 @@
 
 import { useState } from "react";
 import type { Entry, Region } from "@/lib/schema";
-import Store from "./store/Store";
-import styles from "./StoreLauncher.module.css";
+import Room from "./room/Room";
+import styles from "./RoomLauncher.module.css";
 
 /**
- * The store is an enhancement, never a requirement: the canon is fully
- * readable as a server-rendered list, and this only mounts the 3D shop when
- * someone asks for it. That also keeps the whole store out of the bundle
- * anyone who never opens it has to parse.
+ * The room is an enhancement, never a requirement: the canon is fully readable
+ * as a server-rendered list, and this only mounts the 3D den when someone asks
+ * for it. That also keeps the whole room out of the bundle anyone who never
+ * opens it has to parse.
  */
-export default function StoreLauncher({
+export default function RoomLauncher({
   entries,
   region,
   services,
-  label = "▶ walk into the store",
+  displayName,
+  label = "▶ step into the room",
 }: {
   entries: readonly Entry[];
   region: Region;
   services: readonly string[];
+  displayName: string;
   label?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -36,18 +38,21 @@ export default function StoreLauncher({
         </p>
       ) : null}
       {open ? (
-        <Store
+        <Room
           entries={entries}
           region={region}
           services={services}
+          displayName={displayName}
           onLeave={() => setOpen(false)}
           onBrowseList={() => {
             setOpen(false);
-            setNote("same canon, plain list.");
+            setNote("same shelves, read as a list.");
           }}
-          onBackRoom={() => {
+          onCapsule={() => {
             setOpen(false);
-            setNote("the back room is members-only — memberships land in M7.");
+            setNote(
+              "capsules stay sealed until the date they are addressed to. sealing one needs the database — that is M6.",
+            );
           }}
         />
       ) : null}

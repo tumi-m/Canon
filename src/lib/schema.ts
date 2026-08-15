@@ -42,6 +42,51 @@ export const handleSchema = z
   .string()
   .regex(/^[a-z0-9_]{3,20}$/, "handles are 3-20 chars: a-z, 0-9 and _");
 
+/**
+ * Who can see a shelf.
+ *
+ * Canon is not a public feed. A room is yours, and you name who walks into it:
+ * the people you invite, and — for the shelves meant to outlast you — the
+ * people a capsule is addressed to.
+ *
+ * This enum maps 1:1 to the `tier` column and to the `can_view_shelf` RLS
+ * predicate in docs/PLAN.md §7. **None of it is enforced here.** These values
+ * describe intent so the UI and the API agree with the database; Row Level
+ * Security is the security boundary, and it does not exist until M1.
+ */
+export const audienceSchema = z.enum(["private", "invited", "household", "everyone"]);
+export type Audience = z.infer<typeof audienceSchema>;
+
+export const AUDIENCE_LABEL: Record<Audience, string> = {
+  private: "only me",
+  invited: "people i invite",
+  household: "my household",
+  everyone: "anyone with the link",
+};
+
+/**
+ * A shelf sealed until a date, addressed to named people — the thing a canon
+ * leaves behind. Sealed means sealed: before `opensAt` nobody sees the
+ * contents, including the people it is for. That rule belongs in the RLS
+ * predicate, not in a component.
+ */
+export const capsuleSchema = z.object({
+  title: z.string().min(1).max(120),
+  /** a note to whoever opens it */
+  message: z.string().max(NOTE_MAX),
+  opensAt: z.date(),
+  /** who it is addressed to, by email until they have an account */
+  addressedTo: z.array(z.email()).min(1),
+});
+export type Capsule = z.infer<typeof capsuleSchema>;
+
+export const shelfSchema = z.object({
+  name: z.string().min(1).max(80),
+  audience: audienceSchema,
+  capsule: capsuleSchema.optional(),
+});
+export type Shelf = z.infer<typeof shelfSchema>;
+
 export const workSchema = z.object({
   id: z.string().min(1),
   kind: kindSchema,
@@ -70,6 +115,8 @@ export const profileSchema = z.object({
   displayName: z.string().min(1).max(80),
   bio: z.string().max(200),
   region: regionSchema,
+  /** what a new shelf defaults to. a room is private until you open it. */
+  audience: audienceSchema.default("invited"),
   entries: z.array(entrySchema),
 });
 export type Profile = z.infer<typeof profileSchema>;

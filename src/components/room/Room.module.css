@@ -1,21 +1,22 @@
 /* ============================================================
-   THE STORE — a walkable css-3d video shop
+   THE ROOM — somebody's den, in css 3d
    Geometry lives in world.ts; this file only draws it.
+   Lamps, not strip lights. Wood, not shopfitting.
    ============================================================ */
 
-.store {
+.room {
   position: fixed;
   inset: 0;
   z-index: 200;
   overflow: hidden;
-  background: radial-gradient(ellipse at 50% 52%, #222d42 0%, #0d121d 58%, #05080e 100%);
+  background: radial-gradient(ellipse at 50% 55%, #2a2018 0%, #150f0b 60%, #0a0706 100%);
   perspective: 700px;
   perspective-origin: 50% 50%;
   cursor: crosshair;
   touch-action: none;
   contain: strict;
 }
-.store.look {
+.room.look {
   cursor: none;
 }
 
@@ -39,151 +40,189 @@
 
 /* ---------- the shell ---------- */
 .floor {
-  width: 2400px;
-  height: 16000px;
-  margin-left: -1200px;
-  margin-top: -8000px;
+  width: 2100px;
+  height: 2500px;
+  margin-left: -1050px;
+  margin-top: -1250px;
   transform: translateY(290px) rotateX(90deg);
+  /* floorboards, warm and worn */
   background:
-    radial-gradient(4px 9px at 14% 12%, rgba(224, 84, 58, 0.5), transparent 60%),
-    radial-gradient(9px 4px at 62% 34%, rgba(226, 178, 74, 0.42), transparent 60%),
-    radial-gradient(4px 8px at 84% 71%, rgba(94, 196, 160, 0.36), transparent 60%),
-    radial-gradient(8px 4px at 33% 86%, rgba(126, 158, 220, 0.34), transparent 60%),
-    repeating-linear-gradient(90deg, #1b2b3d 0 130px, #22354a 130px 260px),
-    linear-gradient(#1a2836, #101a26);
-  background-size: 220px 220px, 220px 220px, 220px 220px, 220px 220px, auto, auto;
-  box-shadow:
-    inset 0 0 380px rgba(0, 0, 0, 0.8),
-    inset 0 0 160px rgba(255, 214, 158, 0.06);
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.22) 0 2px,
+      transparent 2px 168px
+    ),
+    repeating-linear-gradient(#5a3d26 0 96px, #64452c 96px 192px);
+  box-shadow: inset 0 0 260px rgba(0, 0, 0, 0.75);
+}
+/* the rug the room is arranged around */
+.rug {
+  width: 1340px;
+  height: 1000px;
+  margin-left: -670px;
+  margin-top: -500px;
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse at center, rgba(196, 118, 74, 0.5), transparent 72%),
+    repeating-linear-gradient(46deg, #6d3326 0 34px, #7a3a2b 34px 68px);
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
 }
 .ceil {
-  width: 2400px;
-  height: 16000px;
-  margin-left: -1200px;
-  margin-top: -8000px;
-  transform: translateY(-330px) rotateX(90deg);
-  background: repeating-linear-gradient(0deg, #141924 0 88px, #1b2130 88px 96px);
+  width: 2100px;
+  height: 2500px;
+  margin-left: -1050px;
+  margin-top: -1250px;
+  transform: translateY(-300px) rotateX(90deg);
+  background: #191210;
 }
 .wall {
-  width: 16000px;
-  height: 620px;
-  margin-left: -8000px;
-  margin-top: -330px;
-  background: linear-gradient(#26303f 0%, #1a2230 62%, #10151f 100%);
+  height: 590px;
+  margin-top: -300px;
+  background:
+    linear-gradient(transparent 0 87%, rgba(0, 0, 0, 0.5) 87% 92%, transparent 92%),
+    linear-gradient(transparent 0 13%, rgba(255, 220, 170, 0.07) 13% 14.5%, transparent 14.5%),
+    linear-gradient(#4a3627 0%, #33251b 46%, #241812 100%);
 }
-.wallL {
-  transform: translateX(-1200px) rotateY(90deg);
+.wallSide {
+  width: 2500px;
+  margin-left: -1250px;
 }
-.wallR {
-  transform: translateX(1200px) rotateY(-90deg);
+.wallEnd {
+  width: 2100px;
+  margin-left: -1050px;
 }
-.endwall {
+
+/* a lamp: the glow is the light, there is no renderer to do it for us */
+.lamp {
+  width: 340px;
+  height: 340px;
+  margin-left: -170px;
+  margin-top: -170px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at center,
+    rgba(255, 206, 140, 0.5),
+    rgba(255, 178, 104, 0.16) 38%,
+    transparent 70%
+  );
+}
+.lampCool {
+  background: radial-gradient(
+    circle at center,
+    rgba(150, 210, 255, 0.34),
+    rgba(110, 180, 255, 0.1) 40%,
+    transparent 72%
+  );
+}
+/* dust in the lamplight */
+.motes {
   width: 2400px;
   height: 620px;
   margin-left: -1200px;
-  margin-top: -330px;
-  background: linear-gradient(#171e2c, #0a0e16);
-}
-
-.tube {
-  width: 1500px;
-  height: 30px;
-  margin-left: -750px;
-  margin-top: -15px;
-  background: linear-gradient(#fffaf0, #ffe9c4);
-  border-radius: 3px;
-  box-shadow:
-    0 0 60px 20px rgba(255, 226, 170, 0.5),
-    0 0 160px 70px rgba(255, 206, 140, 0.2);
-}
-/* thin translucent planes stacking into atmospheric depth */
-.fog {
-  width: 3000px;
-  height: 900px;
-  margin-left: -1500px;
-  margin-top: -450px;
-  background: rgba(16, 24, 38, 0.06);
+  margin-top: -310px;
   pointer-events: none;
+  background: rgba(24, 16, 12, 0.05);
 }
 
-/* ---------- shelving ---------- */
-.bay {
-  background: linear-gradient(#241a12 0%, #1a1209 58%, #0f0a06 100%);
-  border: 7px solid #0c0805;
+/* ---------- furniture ---------- */
+.unit {
+  border: 8px solid #2b1c11;
+  background: linear-gradient(#3d2a1a 0%, #2c1d12 60%, #1d130c 100%);
   box-shadow:
-    inset 0 0 80px rgba(0, 0, 0, 0.9),
-    0 0 90px rgba(255, 190, 120, 0.05);
+    inset 0 0 70px rgba(0, 0, 0, 0.72),
+    0 0 60px rgba(255, 190, 120, 0.05);
 }
-/* one filter on the bay, not on a hundred cases — and it flattens the
-   background stock's 3d subtree, which is cheaper again */
-.bayWall {
-  background: linear-gradient(#1e1811 0%, #150f08 60%, #0b0704 100%);
-  filter: saturate(0.45) brightness(0.6);
+/* a floor crate of records, leaning back */
+.crate {
+  border-color: #34220f;
+  border-width: 12px;
+  background: linear-gradient(#6b4620 0%, #462d14 62%, #2b1a0c 100%);
+  box-shadow:
+    inset 0 0 60px rgba(0, 0, 0, 0.6),
+    0 22px 44px rgba(0, 0, 0, 0.6);
 }
-.gcap {
-  width: 220px;
-  height: 470px;
-  margin-left: -110px;
-  margin-top: -235px;
-  background: linear-gradient(#1c1309, #0d0906);
-  border: 6px solid #0c0805;
+/* the cd wallet, open on the table */
+.wallet {
+  border: 10px solid #1d1a17;
+  border-radius: 6px;
+  background: linear-gradient(#2a2621, #1a1714);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
 }
-.gtop {
-  width: 220px;
-  height: 1240px;
-  margin-left: -110px;
-  margin-top: -620px;
-  background: linear-gradient(90deg, #2a1e13, #180f08);
+/* a shoebox of sticks and burned discs */
+.box {
+  border: 8px solid #6b5636;
+  background: linear-gradient(#8a6f45, #6b5636);
 }
+/* the ledge each row stands on */
 .ledge {
   position: absolute;
   left: 6px;
   right: 6px;
   height: 16px;
-  background: linear-gradient(#4a3520, #241708);
+  background: linear-gradient(#5c4222, #2c1c0c);
   transform-origin: top center;
-  transform: translateZ(34px) rotateX(84deg);
+  transform: translateZ(30px) rotateX(84deg);
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
 }
+.walletInner .ledge,
+.boxInner .ledge {
+  display: none;
+}
 
-/* ---------- a case, with actual thickness ---------- */
-.case {
+/* a hand-written label on the shelf edge */
+.label {
   position: absolute;
-  width: 176px;
-  height: 200px;
-  background: #0b0b0b;
+  left: 50%;
+  bottom: -34px;
+  transform: translateX(-50%) translateZ(26px);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  color: #e8cfa5;
+  background: rgba(20, 13, 9, 0.8);
+  border: 1px solid rgba(232, 207, 165, 0.24);
+  border-radius: 3px;
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+
+/* ---------- a sleeve, with actual thickness ---------- */
+.sleeve {
+  position: absolute;
+  background: #120e0b;
   cursor: pointer;
-  transform: translateZ(20px);
+  transform: translateZ(18px);
   transform-style: preserve-3d;
   transition:
     transform 0.2s var(--ease),
     box-shadow 0.2s var(--ease);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.66);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
   padding: 0;
   text-align: left;
 }
-.case::before {
+.sleeve::before {
   content: "";
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
-  width: 20px;
-  background: linear-gradient(90deg, #000, #242424);
+  width: 18px;
+  background: linear-gradient(90deg, #000, #2a211a);
   transform-origin: left center;
   transform: rotateY(90deg);
 }
 .art {
   position: absolute;
-  inset: 4px 4px 26px 8px;
+  inset: 4px 4px 24px 8px;
   display: flex;
   align-items: flex-end;
-  padding: 9px;
+  padding: 8px;
   box-shadow: inset 0 -40px 40px rgba(0, 0, 0, 0.45);
 }
 .art span {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.3;
   color: #fff;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
@@ -193,15 +232,15 @@
   left: 8px;
   right: 4px;
   bottom: 4px;
-  height: 18px;
-  background: #efe4cb;
+  height: 17px;
+  background: #e8dcc0;
   display: flex;
   align-items: center;
   padding: 0 5px;
 }
 .band em {
   font-family: var(--mono);
-  font-size: 7.5px;
+  font-size: 7px;
   font-style: normal;
   letter-spacing: 0.05em;
   color: #2a2118;
@@ -210,20 +249,22 @@
 }
 .changed {
   box-shadow:
-    0 6px 14px rgba(0, 0, 0, 0.66),
+    0 6px 14px rgba(0, 0, 0, 0.6),
     0 0 0 2px var(--red);
 }
 .elsewhere {
-  filter: saturate(0.25) brightness(0.55);
+  filter: saturate(0.3) brightness(0.6);
 }
-.stock {
+/* the household's own clutter: unlabelled, non-interactive set dressing */
+.clutter {
   pointer-events: none;
   box-shadow: none;
+  filter: saturate(0.5) brightness(0.55);
 }
 .aimed {
-  transform: translateZ(58px) scale(1.05);
+  transform: translateZ(52px) scale(1.05);
   box-shadow:
-    0 0 34px 6px rgba(255, 214, 150, 0.55),
+    0 0 34px 6px rgba(255, 206, 140, 0.55),
     0 10px 26px rgba(0, 0, 0, 0.7);
 }
 .aimed.changed {
@@ -232,153 +273,90 @@
     0 0 0 2px var(--red);
 }
 
-/* ---------- signage ---------- */
-.sign {
-  width: 900px;
-  height: 96px;
-  margin-left: -450px;
-  margin-top: -48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(#d1462e, #8c2818);
-  border-radius: 5px;
-  box-shadow:
-    0 10px 44px rgba(210, 70, 46, 0.42),
-    inset 0 2px 0 rgba(255, 255, 255, 0.2);
+/* ---------- the things that make it a room ---------- */
+.table {
+  width: 620px;
+  height: 380px;
+  margin-left: -310px;
+  margin-top: -190px;
+  transform-origin: center;
+  /* tilted a little off flat so the top catches the lamps instead of
+     disappearing edge-on at eye level */
+  background: linear-gradient(#6a4a2c, #402b16);
+  border: 6px solid #2a1a0d;
+  border-radius: 8px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.65);
 }
-.sign b {
-  font-family: var(--mono);
-  font-size: 30px;
-  letter-spacing: 0.36em;
-  color: #fff2e4;
-  font-weight: 500;
-  text-shadow: 0 0 18px rgba(255, 190, 150, 0.6);
+.couch {
+  width: 700px;
+  height: 300px;
+  margin-left: -350px;
+  margin-top: -150px;
+  background: linear-gradient(#4b3b52, #2f2434);
+  border-radius: 10px 10px 4px 4px;
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.6);
 }
-.sign i {
-  position: absolute;
-  top: -70px;
-  width: 3px;
-  height: 70px;
-  background: #2a2a2a;
-}
-.signA {
-  left: 190px;
-}
-.signB {
-  right: 190px;
-}
-
-.marquee {
-  width: 1500px;
-  height: 250px;
-  margin-left: -750px;
-  margin-top: -125px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  background: linear-gradient(#12161f, #080b11);
-  border: 5px solid #1d2432;
-  border-radius: 6px;
-}
-.marquee b {
-  font-family: var(--serif);
-  font-size: 76px;
-  letter-spacing: -0.02em;
-  color: #ffeede;
-  text-shadow:
-    0 0 22px rgba(255, 120, 90, 0.85),
-    0 0 70px rgba(255, 90, 60, 0.45);
-}
-.marquee b i {
-  color: var(--red);
-  font-style: normal;
-}
-.marquee em {
-  font-family: var(--mono);
-  font-size: 15px;
-  font-style: normal;
-  letter-spacing: 0.42em;
-  color: #7fe6b6;
-  text-shadow: 0 0 16px rgba(90, 255, 180, 0.7);
-}
-
-.door {
-  width: 400px;
-  height: 500px;
-  margin-left: -200px;
+.tv {
+  width: 740px;
+  height: 420px;
+  margin-left: -370px;
   margin-top: -210px;
-  background: linear-gradient(#2c1d14, #130c07);
-  border: 9px solid #0b0705;
-  border-radius: 5px 5px 0 0;
+  background: #0a0d0c;
+  border: 14px solid #191512;
+  border-radius: 8px;
+  box-shadow: 0 0 90px rgba(120, 190, 255, 0.14);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
-  box-shadow: 0 0 120px rgba(255, 190, 120, 0.16);
-  cursor: pointer;
+  overflow: hidden;
 }
-.door b {
+.tv b {
   font-family: var(--mono);
-  font-size: 19px;
-  letter-spacing: 0.26em;
-  color: #eccb9c;
+  font-size: 14px;
+  letter-spacing: 0.2em;
+  color: #9fe4c4;
   text-align: center;
   line-height: 2;
+  text-shadow: 0 0 12px rgba(120, 230, 180, 0.7);
 }
-.knob {
-  width: 19px;
-  height: 19px;
-  border-radius: 50%;
-  background: #caa96b;
-  position: absolute;
-  right: 40px;
-  top: 50%;
-  box-shadow: 0 0 14px rgba(202, 169, 107, 0.7);
-}
-
-.counter {
-  width: 760px;
-  height: 170px;
-  margin-left: -380px;
-  margin-top: -85px;
-  background: linear-gradient(#3d2c1f, #221610);
-  border-radius: 4px;
-  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.crt {
-  width: 180px;
-  height: 134px;
-  background: #04120b;
-  border: 10px solid #262626;
-  border-radius: 10px;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 0 40px rgba(70, 255, 160, 0.16);
-}
-.crt::after {
+.tv::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.36) 0 2px, transparent 2px 4px);
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.3) 0 2px, transparent 2px 4px);
 }
-.crt b {
-  position: absolute;
-  inset: 0;
+
+/* the way out — and the thing that outlives you */
+.hatch {
+  width: 420px;
+  height: 300px;
+  margin-left: -210px;
+  margin-top: -150px;
+  background: linear-gradient(#3a2a1c, #1c130c);
+  border: 10px solid #241810;
+  border-radius: 4px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 12px;
+  box-shadow: 0 0 90px rgba(255, 200, 130, 0.14);
+  cursor: pointer;
+}
+.hatch b {
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0.24em;
+  color: #edd0a4;
+  text-align: center;
+  line-height: 1.9;
+}
+.hatch small {
   font-family: var(--mono);
   font-size: 10px;
-  color: #5dff9c;
-  text-align: center;
-  padding: 9px;
+  letter-spacing: 0.2em;
+  opacity: 0.65;
+  color: #edd0a4;
 }
 
 /* ---------- hud ---------- */
@@ -386,7 +364,7 @@
   position: fixed;
   z-index: 206;
   font-family: var(--mono);
-  color: #e9dfcb;
+  color: #f0e2cb;
   letter-spacing: 0.1em;
   font-size: 0.68rem;
 }
@@ -405,21 +383,21 @@
   pointer-events: auto;
 }
 .exit {
-  border: 1px solid rgba(233, 223, 203, 0.4);
+  border: 1px solid rgba(240, 226, 203, 0.4);
   padding: 8px 14px;
   border-radius: 99px;
-  background: rgba(0, 0, 0, 0.42);
-  color: #e9dfcb;
+  background: rgba(0, 0, 0, 0.45);
+  color: #f0e2cb;
 }
 .exit:hover {
   border-color: var(--red);
   color: #fff;
 }
 .now {
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.48);
   padding: 8px 14px;
   border-radius: 99px;
-  border: 1px solid rgba(233, 223, 203, 0.18);
+  border: 1px solid rgba(240, 226, 203, 0.18);
 }
 .hudBot {
   bottom: 20px;
@@ -436,10 +414,10 @@
   min-width: 50px;
   height: 42px;
   padding: 0 12px;
-  border: 1px solid rgba(233, 223, 203, 0.35);
+  border: 1px solid rgba(240, 226, 203, 0.35);
   border-radius: 5px;
-  background: rgba(0, 0, 0, 0.5);
-  color: #e9dfcb;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f0e2cb;
   font-size: 0.72rem;
 }
 .hudBot button:hover {
@@ -458,18 +436,18 @@
   z-index: 205;
   left: 50%;
   top: 50%;
-  width: 20px;
-  height: 20px;
-  margin: -10px 0 0 -10px;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
   pointer-events: none;
-  opacity: 0.75;
+  opacity: 0.7;
   transition: opacity 0.2s;
 }
 .retic::before,
 .retic::after {
   content: "";
   position: absolute;
-  background: rgba(255, 238, 214, 0.85);
+  background: rgba(255, 238, 214, 0.8);
 }
 .retic::before {
   left: 50%;
@@ -506,10 +484,10 @@
   letter-spacing: 0.08em;
   color: #fff2e0;
   text-align: center;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.6);
   padding: 7px 14px;
   border-radius: 4px;
-  border: 1px solid rgba(233, 223, 203, 0.2);
+  border: 1px solid rgba(240, 226, 203, 0.2);
   pointer-events: none;
   max-width: min(44ch, 86vw);
 }
@@ -521,44 +499,38 @@
   margin-top: 3px;
 }
 
-.minimap {
+.shelfList {
   position: fixed;
   z-index: 205;
   right: 22px;
   bottom: 80px;
-  width: 150px;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(233, 223, 203, 0.2);
+  width: 190px;
+  background: rgba(0, 0, 0, 0.52);
+  border: 1px solid rgba(240, 226, 203, 0.2);
   border-radius: 5px;
   padding: 10px;
   font-family: var(--mono);
   font-size: 0.56rem;
-  letter-spacing: 0.1em;
-  color: #cfc4ae;
+  letter-spacing: 0.08em;
+  color: #d6c8ae;
 }
-.mmRow {
+.shelfRow {
   display: flex;
   align-items: center;
   gap: 7px;
   padding: 3px 0;
   opacity: 0.5;
 }
-.mmRow.mmOn {
+.shelfRow.shelfOn {
   opacity: 1;
   color: #ffd9a8;
 }
-.mmDot {
+.shelfDot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: currentColor;
   flex: none;
-}
-.mmYou {
-  margin-top: 7px;
-  padding-top: 7px;
-  border-top: 1px solid rgba(233, 223, 203, 0.16);
-  color: var(--phos);
 }
 
 .stick {
@@ -569,7 +541,7 @@
   width: 120px;
   height: 120px;
   border-radius: 50%;
-  border: 1px solid rgba(233, 223, 203, 0.28);
+  border: 1px solid rgba(240, 226, 203, 0.28);
   background: rgba(0, 0, 0, 0.34);
   touch-action: none;
 }
@@ -581,8 +553,8 @@
   height: 46px;
   margin: -23px 0 0 -23px;
   border-radius: 50%;
-  background: rgba(233, 223, 203, 0.34);
-  border: 1px solid rgba(233, 223, 203, 0.45);
+  background: rgba(240, 226, 203, 0.34);
+  border: 1px solid rgba(240, 226, 203, 0.45);
 }
 
 .vign {
@@ -590,28 +562,28 @@
   inset: 0;
   z-index: 204;
   pointer-events: none;
-  background: radial-gradient(ellipse at 50% 50%, transparent 44%, rgba(0, 0, 0, 0.7) 100%);
+  background: radial-gradient(ellipse at 50% 50%, transparent 46%, rgba(0, 0, 0, 0.72) 100%);
 }
 .dust {
   position: fixed;
   inset: 0;
   z-index: 203;
   pointer-events: none;
-  opacity: 0.55;
+  opacity: 0.5;
   background-image:
-    radial-gradient(1.4px 1.4px at 20% 30%, rgba(255, 235, 200, 0.55), transparent),
-    radial-gradient(1.2px 1.2px at 70% 60%, rgba(255, 235, 200, 0.4), transparent),
-    radial-gradient(1.6px 1.6px at 45% 80%, rgba(255, 235, 200, 0.3), transparent),
-    radial-gradient(1.1px 1.1px at 86% 22%, rgba(255, 235, 200, 0.32), transparent);
-  animation: dustdrift 14s ease-in-out infinite alternate;
+    radial-gradient(1.4px 1.4px at 20% 30%, rgba(255, 226, 180, 0.6), transparent),
+    radial-gradient(1.2px 1.2px at 70% 60%, rgba(255, 226, 180, 0.45), transparent),
+    radial-gradient(1.6px 1.6px at 45% 80%, rgba(255, 226, 180, 0.32), transparent),
+    radial-gradient(1.1px 1.1px at 86% 22%, rgba(255, 226, 180, 0.34), transparent);
+  animation: dustdrift 16s ease-in-out infinite alternate;
 }
 @keyframes dustdrift {
   to {
-    transform: translate3d(24px, -18px, 0);
+    transform: translate3d(20px, -16px, 0);
   }
 }
 
-/* ---------- the flip card ---------- */
+/* ---------- the sleeve you pulled out ---------- */
 .inspect {
   position: fixed;
   inset: 0;
@@ -619,7 +591,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(4, 6, 10, 0.72);
+  background: rgba(12, 8, 5, 0.76);
   backdrop-filter: blur(3px);
 }
 .flip {
@@ -650,7 +622,7 @@
   box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7);
 }
 .faceFront {
-  background: #0e0e0e;
+  background: #120e0b;
   display: flex;
   flex-direction: column;
 }
@@ -670,7 +642,7 @@
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
 }
 .strip {
-  background: #f0e6cf;
+  background: #e8dcc0;
   margin: 8px;
   padding: 7px 9px;
   border-radius: 2px;
@@ -680,10 +652,10 @@
   letter-spacing: 0.06em;
 }
 .faceBack {
-  background: #141210;
+  background: #17120e;
   transform: rotateY(180deg);
   padding: 22px 20px;
-  color: #e9dfcb;
+  color: #f0e2cb;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -736,10 +708,10 @@
   padding: 0 12px;
 }
 .tools button {
-  border: 1px solid rgba(233, 223, 203, 0.4);
+  border: 1px solid rgba(240, 226, 203, 0.4);
   padding: 9px 15px;
   border-radius: 99px;
-  color: #e9dfcb;
+  color: #f0e2cb;
   background: rgba(0, 0, 0, 0.4);
 }
 .tools button:hover {
@@ -752,14 +724,14 @@
   .dust {
     animation: none;
   }
-  .case,
+  .sleeve,
   .flipIn {
     transition: none;
   }
 }
 
 @media (max-width: 760px) {
-  .minimap,
+  .shelfList,
   .hint {
     display: none;
   }

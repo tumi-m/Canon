@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { entrySchema, handleSchema, noteSchema, NOTE_MAX, WHY_MAX } from "./schema";
+import {
+  audienceSchema,
+  capsuleSchema,
+  entrySchema,
+  handleSchema,
+  noteSchema,
+  NOTE_MAX,
+  profileSchema,
+  shelfSchema,
+  WHY_MAX,
+} from "./schema";
 import { getCanon } from "./canon";
 
 const work = {
@@ -66,5 +76,56 @@ describe("the seed canon", () => {
 
   it("returns undefined for a handle nobody has claimed", () => {
     expect(getCanon("nobody")).toBeUndefined();
+  });
+});
+
+describe("who gets in", () => {
+  it("defaults a room to the people you invite, not the internet", () => {
+    const parsed = profileSchema.parse({
+      handle: "someone",
+      displayName: "someone",
+      bio: "",
+      region: "nz",
+      entries: [],
+    });
+    expect(parsed.audience).toBe("invited");
+  });
+
+  it("takes only the four audiences", () => {
+    for (const a of ["private", "invited", "household", "everyone"]) {
+      expect(audienceSchema.safeParse(a).success).toBe(true);
+    }
+    for (const a of ["public", "followers", "", "INVITED"]) {
+      expect(audienceSchema.safeParse(a).success).toBe(false);
+    }
+  });
+});
+
+describe("a capsule", () => {
+  const base = {
+    title: "for when you are eighteen",
+    message: "the things that made me, in case they help.",
+    opensAt: new Date("2044-01-01"),
+    addressedTo: ["someone@example.com"],
+  };
+
+  it("must be addressed to somebody", () => {
+    expect(capsuleSchema.safeParse(base).success).toBe(true);
+    expect(capsuleSchema.safeParse({ ...base, addressedTo: [] }).success).toBe(false);
+    expect(capsuleSchema.safeParse({ ...base, addressedTo: ["not an email"] }).success).toBe(false);
+  });
+
+  it("holds its message to the same 300 characters as a note", () => {
+    expect(capsuleSchema.safeParse({ ...base, message: "a".repeat(NOTE_MAX) }).success).toBe(true);
+    expect(capsuleSchema.safeParse({ ...base, message: "a".repeat(NOTE_MAX + 1) }).success).toBe(
+      false,
+    );
+  });
+
+  it("is optional on a shelf — most shelves are not capsules", () => {
+    expect(shelfSchema.safeParse({ name: "the good shelf", audience: "invited" }).success).toBe(true);
+    expect(
+      shelfSchema.safeParse({ name: "for my daughter", audience: "private", capsule: base }).success,
+    ).toBe(true);
   });
 });

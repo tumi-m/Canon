@@ -5,7 +5,7 @@ import { allHandles, getCanon } from "@/lib/canon";
 import { isKnownRegion, PROVIDERS, regionName } from "@/lib/availability";
 import { formatMinutes, totalMinutes } from "@/lib/runtime";
 import CanonList from "@/components/CanonList";
-import StoreLauncher from "@/components/StoreLauncher";
+import RoomLauncher from "@/components/RoomLauncher";
 import styles from "./page.module.css";
 
 type Params = { handle: string };
@@ -84,10 +84,11 @@ export default async function CanonPage({
         </dl>
 
         <div className={styles.cta}>
-          <StoreLauncher
+          <RoomLauncher
             entries={canon.entries}
             region={region}
             services={Object.keys(PROVIDERS)}
+            displayName={canon.displayName}
           />
         </div>
       </section>
