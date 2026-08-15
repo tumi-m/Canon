@@ -87,10 +87,24 @@ debugging session:
    measures as zero — which silently collapses every case onto its shelf's
    centre and leaves the reticle with nothing to hit.
 
-**Getting out.** The store is an enhancement, never a requirement: `☰ list
-instead` drops you back to the plain text view with the same canon,
-`prefers-reduced-motion` disables head bob and drift, and no keyboard focus is
-ever trapped.
+**Getting out.** The store is an enhancement, never a requirement. `☰ list
+instead` drops you back to the plain text view with the same canon, and
+`prefers-reduced-motion` disables head bob, camera roll and dust drift.
+
+**Keyboard.** Opening the store moves focus to *leave the store* and makes the
+rest of the page `inert`, so Tab cycles the store's own controls instead of
+wandering into the shelf view behind the aisle; the flip card does the same to
+the HUD while it is up. `Esc` unwinds one layer at a time — card, then mouse
+capture, then the store — and closing returns focus to whatever opened it.
+Contained while you are in it, never a trap.
+
+**What is actually verified.** Movement, collision, reticle resolution,
+culling, both entry points, the list escape hatch, reduced motion, touch, and
+focus containment are all covered by driving the page in Chromium. The
+simulation costs ~0.04ms a frame, so the budget is entirely paint and
+composite — and **frame rate is unverified**, because this was built headless
+where Chromium software-rasterises at a few fps. The M5 target of 50fps with 60
+cases still needs checking on real hardware.
 
 **Set dressing.** The unlabelled cases filling the wall bays and the backs of
 the islands are the shop's background stock. They are deliberately anonymous

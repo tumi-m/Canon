@@ -1690,6 +1690,27 @@ function loop(t){
 const locked = () => document.pointerLockElement === $('#store3d');
 const isTouch = matchMedia('(pointer:coarse)').matches;
 
+/* everything the store owns; the rest of the page goes inert while you are
+   inside it, so tab cannot wander off into the shelf view behind the aisle. */
+const CHROME = ['#store3d','#stick','#retic','#aimLabel','#minimap','#dustFx',
+                '#vignFx','#hudTop','#hudBot','#inspect','#toast'];
+let storeOpener = null;
+
+function pageInert(on){
+  const keep = new Set(CHROME.map(sel=>$(sel)).filter(Boolean));
+  for(const el of document.body.children){
+    if(keep.has(el)) continue;
+    on ? el.setAttribute('inert','') : el.removeAttribute('inert');
+  }
+}
+/* the flip card is modal over the aisle: park the hud while it is up */
+function setInspect(on){
+  $('#inspect').classList.toggle('open', on);
+  ['#hudTop','#hudBot'].forEach(sel=> on ? $(sel).setAttribute('inert','') : $(sel).removeAttribute('inert'));
+  if(on) $('#ipBack').focus({preventScroll:true});
+  else if(storeOpen) $('#storeExit').focus({preventScroll:true});
+}
+
 function openStore(){
   storeOpen = true;
   cam.x = 0; cam.z = G.spawnZ; cam.yaw = 0; cam.pitch = 0; cam.vx = cam.vz = 0; cam.bob = 0;
@@ -1708,6 +1729,10 @@ function openStore(){
   document.body.style.overflow = 'hidden';
   lastT = performance.now(); frame = 0;
   raf = requestAnimationFrame(loop);
+  storeOpener = document.activeElement;
+  pageInert(true);
+  $('#store3d').setAttribute('aria-hidden','false');
+  $('#storeExit').focus({preventScroll:true});
   toast(isTouch ? 'walk with the pad · tap a case' : 'wasd to walk · click to look · e to pick up');
 }
 
@@ -1721,8 +1746,12 @@ function closeStore(){
   $('#store3d').classList.remove('open');
   ['#hudTop','#hudBot','#retic','#minimap','#stick','#dustFx','#vignFx']
     .forEach(s=> $(s).style.display='none');
-  $('#inspect').classList.remove('open');
+  setInspect(false);
+  $('#store3d').setAttribute('aria-hidden','true');
+  pageInert(false);
   document.body.style.overflow = '';
+  if(storeOpener && storeOpener.isConnected) storeOpener.focus({preventScroll:true});
+  storeOpener = null;
 }
 
 function activate(t){
@@ -1739,7 +1768,7 @@ document.addEventListener('keydown', e=>{
   if(KEYMAP[k]){ keys[KEYMAP[k]] = 1; e.preventDefault(); return }
   if(k === 'e' || k === 'enter'){ activate(aimT); e.preventDefault(); return }
   if(k === 'escape'){
-    if($('#inspect').classList.contains('open')) $('#inspect').classList.remove('open');
+    if($('#inspect').classList.contains('open')) setInspect(false);
     else if(locked()) document.exitPointerLock();
     else closeStore();
   }
@@ -1826,7 +1855,6 @@ $('#storeList').onclick = ()=>{
   st.addEventListener('pointercancel', end);
 })();
 
-$('#heroStore').onclick = openStore;
 
 /* inspect a case */
 function inspect(id){
@@ -1848,11 +1876,11 @@ function inspect(id){
       <div class="rt">${(state.comments[id]||[]).length} notes on this tape</div>
     </div>`;
   $('#flip').classList.remove('back');
-  $('#inspect').classList.add('open');
+  setInspect(true);
 }
 $('#flip').onclick = ()=> $('#flip').classList.toggle('back');
 $('#ipFlip').onclick = ()=> $('#flip').classList.toggle('back');
-$('#ipBack').onclick = ()=> $('#inspect').classList.remove('open');
+$('#ipBack').onclick = ()=> setInspect(false);
 $('#ipWatch').onclick = ()=>{ const id=ipId; closeStore(); document.getElementById('shelf').scrollIntoView(); setTimeout(()=>openDrawer(id),260) };
 $('#heroStore').onclick = openStore;
 
