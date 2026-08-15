@@ -1,0 +1,260 @@
+@import "tailwindcss";
+
+/* ============================================================
+   CANON — design system
+   style: analog futurism (warm paper × phosphor)
+   type:  Newsreader (voice) / IBM Plex Mono (machine)
+   avoid: purple gradients, glassmorphism, SaaS hero clichés
+
+   Every colour in the product is a custom property declared here.
+   Components use the token, never a hex — that is what makes the
+   night-CRT mode and the generative-UI themes a token swap.
+   ============================================================ */
+
+:root {
+  --paper: #faf6ee;
+  --ink: #1b1712;
+  --ink-soft: #5c544a;
+  --line: #e3dccd;
+  --red: #c8402a;
+  --red-soft: #f4ded8;
+  --phos: #0da678;
+  --amber: #d99114;
+  --card: #fffdf8;
+
+  --serif: var(--font-newsreader), Georgia, serif;
+  --mono: var(--font-plex-mono), ui-monospace, monospace;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --grain-opacity: 0.05;
+}
+
+[data-mode="crt"] {
+  --paper: #0c0f0d;
+  --ink: #d8f3e4;
+  --ink-soft: #7fa892;
+  --line: #1e2b23;
+  --card: #101512;
+  --red: #ff6b4a;
+  --red-soft: #2a1510;
+  --phos: #39ffa0;
+  --grain-opacity: 0.09;
+}
+
+/* expose the tokens to Tailwind so `bg-paper` / `text-ink` resolve to them */
+@theme inline {
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-line: var(--line);
+  --color-red: var(--red);
+  --color-red-soft: var(--red-soft);
+  --color-phos: var(--phos);
+  --color-amber: var(--amber);
+  --color-card: var(--card);
+  --font-serif: var(--serif);
+  --font-mono: var(--mono);
+}
+
+/* ============================================================
+   MATERIALS
+   No image assets: every texture below is an SVG filter encoded as a data
+   URI. feTurbulence stretched along one axis reads as wood grain; isotropic
+   at high frequency it reads as weave. Flat gradients were what made the
+   room look drawn rather than built.
+   ============================================================ */
+:root {
+  /* long-grain timber: low frequency across, high along */
+  --tex-wood: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.006 0.16' numOctaves='4' seed='7'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='420' height='420' filter='url(%23w)' opacity='0.5'/%3E%3C/svg%3E");
+  /* short-grain, for end panels and crates cut across the board */
+  --tex-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.11 0.02' numOctaves='3' seed='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23g)' opacity='0.42'/%3E%3C/svg%3E");
+  /* upholstery and rug pile */
+  --tex-weave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23f)' opacity='0.38'/%3E%3C/svg%3E");
+  /* printed card, for sleeve faces */
+  --tex-card: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='c'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' seed='9'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23c)' opacity='0.3'/%3E%3C/svg%3E");
+}
+
+
+/* ============================================================
+   VENUES
+   The same room, a different building. Each block below is the
+   whole of a venue: the geometry is shared, only these tokens
+   and the shelf names in venues.ts change.
+   ============================================================ */
+:root,
+[data-venue="den"] {
+  --room-void: radial-gradient(ellipse at 50% 55%, #2a2018 0%, #150f0b 60%, #0a0706 100%);
+  --room-floor-a: #593c26;
+  --room-floor-b: #5f4129;
+  --room-wall-a: #4a3627;
+  --room-wall-b: #33251b;
+  --room-wall-c: #241812;
+  --room-ceil: #17110f;
+  --room-carcass-a: #43301e;
+  --room-carcass-b: #2e1f13;
+  --room-carcass-c: #1b120b;
+  --room-edge: #241708;
+  --room-rug-a: #6d3326;
+  --room-rug-b: #7a3a2b;
+  --room-rug-edge: #58241b;
+  --room-lamp: rgba(255, 206, 140, 0.3);
+  --room-glow: #ffeccc;
+  --room-label: #e8cfa5;
+  --room-floor-tex: var(--tex-wood);
+  --room-wall-tex: var(--tex-card);
+}
+
+[data-venue="library"] {
+  --room-void: radial-gradient(ellipse at 50% 55%, #1d2320 0%, #0e1211 60%, #060908 100%);
+  --room-floor-a: #3d2c1c;
+  --room-floor-b: #43311f;
+  --room-wall-a: #5b5347;
+  --room-wall-b: #3e3931;
+  --room-wall-c: #262320;
+  --room-ceil: #14120f;
+  --room-carcass-a: #33221a;
+  --room-carcass-b: #241710;
+  --room-carcass-c: #150d09;
+  --room-edge: #170e09;
+  --room-rug-a: #24402f;
+  --room-rug-b: #2b4a37;
+  --room-rug-edge: #16281d;
+  --room-lamp: rgba(255, 214, 150, 0.26);
+  --room-glow: #ffe6bd;
+  --room-label: #d8c79c;
+  --room-floor-tex: var(--tex-wood);
+  --room-wall-tex: var(--tex-grain);
+}
+
+[data-venue="vault"] {
+  --room-void: radial-gradient(ellipse at 50% 55%, #1b1f24 0%, #0d1013 60%, #050708 100%);
+  --room-floor-a: #34383c;
+  --room-floor-b: #3a3e43;
+  --room-wall-a: #4c5257;
+  --room-wall-b: #363b40;
+  --room-wall-c: #21262a;
+  --room-ceil: #14181b;
+  --room-carcass-a: #454b51;
+  --room-carcass-b: #2f3439;
+  --room-carcass-c: #1d2124;
+  --room-edge: #171a1d;
+  --room-rug-a: #2c3136;
+  --room-rug-b: #33383d;
+  --room-rug-edge: #1c2023;
+  --room-lamp: rgba(198, 224, 255, 0.24);
+  --room-glow: #e6f2ff;
+  --room-label: #cddbe6;
+  --room-floor-tex: var(--tex-card);
+  --room-wall-tex: var(--tex-card);
+}
+
+[data-venue="seedbank"] {
+  --room-void: radial-gradient(ellipse at 50% 55%, #1e2a33 0%, #0e161c 60%, #060b0e 100%);
+  --room-floor-a: #3f4c55;
+  --room-floor-b: #46545e;
+  --room-wall-a: #6d8492;
+  --room-wall-b: #4a5b66;
+  --room-wall-c: #2b3740;
+  --room-ceil: #162026;
+  --room-carcass-a: #52646f;
+  --room-carcass-b: #384752;
+  --room-carcass-c: #222d35;
+  --room-edge: #1a232a;
+  --room-rug-a: #35454f;
+  --room-rug-b: #3c4e59;
+  --room-rug-edge: #232e36;
+  --room-lamp: rgba(214, 240, 255, 0.3);
+  --room-glow: #eaf8ff;
+  --room-label: #dcefff;
+  --room-floor-tex: var(--tex-card);
+  --room-wall-tex: var(--tex-card);
+}
+
+[data-venue="cinema"] {
+  --room-void: radial-gradient(ellipse at 50% 55%, #17100f 0%, #0a0605 60%, #040202 100%);
+  --room-floor-a: #2a1416;
+  --room-floor-b: #301719;
+  --room-wall-a: #34191b;
+  --room-wall-b: #241113;
+  --room-wall-c: #150a0b;
+  --room-ceil: #0d0708;
+  --room-carcass-a: #2c1416;
+  --room-carcass-b: #1e0e0f;
+  --room-carcass-c: #120809;
+  --room-edge: #0e0505;
+  --room-rug-a: #5a1720;
+  --room-rug-b: #661a25;
+  --room-rug-edge: #3a0e15;
+  --room-lamp: rgba(255, 168, 120, 0.2);
+  --room-glow: #ffd6c2;
+  --room-label: #f0cfc4;
+  --room-floor-tex: var(--tex-weave);
+  --room-wall-tex: var(--tex-weave);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.6;
+  letter-spacing: 0.005em;
+  transition:
+    background 0.5s var(--ease),
+    color 0.5s var(--ease);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--red);
+  color: var(--paper);
+}
+
+/* film grain over everything — the one texture the design leans on */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 120;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--red);
+  text-underline-offset: 3px;
+}
+a:hover {
+  color: var(--red);
+}
+
+button {
+  font-family: var(--mono);
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

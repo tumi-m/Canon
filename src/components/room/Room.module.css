@@ -1,0 +1,1085 @@
+/* ============================================================
+   THE ROOM — somebody's den, in css 3d
+   Geometry lives in world.ts; this file only draws it.
+   Lamps, not strip lights. Wood, not shopfitting.
+   ============================================================ */
+
+.room {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow: hidden;
+  background: var(--room-void);
+  perspective: 700px;
+  perspective-origin: 50% 50%;
+  cursor: crosshair;
+  touch-action: none;
+  contain: strict;
+}
+.room.look {
+  cursor: none;
+}
+
+/* the inverse camera pose: roll (head bob), pitch, yaw, then -translate */
+.world {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  transform: rotateZ(var(--roll, 0deg)) rotateX(var(--pitch, 0deg)) rotateY(var(--yaw, 0deg))
+    translate3d(calc(var(--cx, 0px) * -1), calc(var(--cy, 0px) * -1), calc(var(--cz, 0px) * -1));
+  /* the only thing that moves every frame; promoting it once stops the
+     browser re-deciding each frame, which shows up as micro-stutter */
+  will-change: transform;
+}
+.world > * {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-style: preserve-3d;
+}
+
+/* ---------- the shell ---------- */
+.floor {
+  width: 2100px;
+  height: 2500px;
+  margin-left: -1050px;
+  margin-top: -1250px;
+  transform: translateY(290px) rotateX(90deg);
+  /* floorboards: grain, a shadowed seam and a bevel per board */
+  background:
+    /* the pools the two pendants throw on the boards */
+    radial-gradient(30% 22% at 38% 36%, var(--room-lamp), transparent 72%),
+    radial-gradient(26% 18% at 64% 62%, var(--room-lamp), transparent 74%),
+    var(--room-floor-tex),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.5) 0 3px,
+      rgba(255, 210, 150, 0.05) 3px 6px,
+      transparent 6px 172px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.14) 0 1px,
+      transparent 1px 340px
+    ),
+    repeating-linear-gradient(90deg, var(--room-floor-a) 0 172px, var(--room-floor-b) 172px 344px);
+  background-blend-mode: normal, normal, overlay, normal, normal, normal;
+  box-shadow: inset 0 0 300px rgba(0, 0, 0, 0.86);
+}
+/* the rug the room is arranged around */
+.rug {
+  width: 1340px;
+  height: 1000px;
+  margin-left: -670px;
+  margin-top: -500px;
+  border-radius: 12px;
+  background:
+    var(--tex-weave),
+    radial-gradient(ellipse at center, rgba(214, 132, 84, 0.42), transparent 70%),
+    repeating-linear-gradient(46deg, var(--room-rug-a) 0 30px, var(--room-rug-b) 30px 60px),
+    repeating-linear-gradient(-46deg, rgba(0, 0, 0, 0.16) 0 30px, transparent 30px 60px);
+  background-blend-mode: overlay, normal, normal, normal;
+  border: 14px solid var(--room-rug-edge);
+  box-shadow:
+    0 0 60px rgba(0, 0, 0, 0.55),
+    inset 0 0 90px rgba(0, 0, 0, 0.4);
+}
+.ceil {
+  width: 2100px;
+  height: 2500px;
+  margin-left: -1050px;
+  margin-top: -1250px;
+  transform: translateY(-300px) rotateX(90deg);
+  /* a ceiling is never flat black: the shades bounce onto it */
+  background:
+    radial-gradient(16% 12% at 38% 36%, var(--room-lamp), transparent 70%),
+    radial-gradient(14% 10% at 64% 62%, var(--room-lamp), transparent 72%),
+    var(--room-ceil);
+}
+.wall {
+  height: 590px;
+  margin-top: -300px;
+  background:
+    var(--room-wall-tex),
+    linear-gradient(transparent 0 87%, rgba(0, 0, 0, 0.55) 87% 92.5%, rgba(255, 220, 170, 0.05) 92.5% 93.5%, transparent 93.5%),
+    linear-gradient(transparent 0 13%, rgba(255, 220, 170, 0.08) 13% 14.5%, transparent 14.5%),
+    linear-gradient(#4a3627 0%, #33251b 46%, #241812 100%);
+  background-blend-mode: overlay, normal, normal, normal, normal, normal;
+  box-shadow: inset 0 -120px 200px -60px rgba(0, 0, 0, 0.85);
+}
+/* Two pools where the pendants hang, painted onto the plaster. A renderer
+   would compute these; here they are part of the wall, which costs nothing
+   per frame and does not float. */
+.wall {
+  background-image:
+    radial-gradient(60% 90% at 26% 8%, var(--room-lamp), transparent 70%),
+    radial-gradient(52% 80% at 72% 6%, var(--room-lamp), transparent 72%),
+    var(--room-wall-tex),
+    linear-gradient(transparent 0 87%, rgba(0, 0, 0, 0.55) 87% 92.5%, rgba(255, 220, 170, 0.05) 92.5% 93.5%, transparent 93.5%),
+    linear-gradient(transparent 0 13%, rgba(255, 220, 170, 0.08) 13% 14.5%, transparent 14.5%),
+    linear-gradient(var(--room-wall-a) 0%, var(--room-wall-b) 46%, var(--room-wall-c) 100%);
+}
+.wallSide {
+  width: 2500px;
+  margin-left: -1250px;
+}
+.wallEnd {
+  width: 2100px;
+  margin-left: -1050px;
+}
+
+/* A pendant lamp: an object, not a smudge.
+   The five translucent discs that used to stand in for lights are gone — CSS
+   3D has no lighting, so a disc floating in mid-air only ever reads as a
+   smear. What is left is a thing you can see hanging: a cord, an enamel shade
+   lit along its rim, and a hot filament under it. The light it appears to
+   cast is painted into the walls, floor and ceiling, which is the only place
+   light can honestly live in a renderer that has none. */
+.pendant {
+  width: 200px;
+  height: 120px;
+  margin-left: -100px;
+  margin-top: -60px;
+  pointer-events: none;
+}
+.cord {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 3px;
+  height: 120px;
+  margin-left: -1.5px;
+  background: linear-gradient(#0f0b09, #1d1614);
+}
+.shade {
+  position: absolute;
+  inset: 0;
+  /* a cone read end-on: dark enamel outside, a bright rim where it opens */
+  background: linear-gradient(
+    var(--room-carcass-c) 0%,
+    var(--room-carcass-b) 46%,
+    color-mix(in srgb, var(--room-glow) 40%, var(--room-carcass-a)) 82%,
+    var(--room-glow) 100%
+  );
+  border-radius: 40% 40% 46% 46% / 22% 22% 60% 60%;
+  box-shadow:
+    inset 0 -6px 12px color-mix(in srgb, var(--room-glow) 50%, transparent),
+    0 0 40px var(--room-lamp);
+}
+.bulb {
+  position: absolute;
+  left: 50%;
+  top: 82%;
+  width: 116px;
+  height: 116px;
+  margin-left: -58px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at center,
+    var(--room-glow) 0%,
+    color-mix(in srgb, var(--room-glow) 52%, transparent) 26%,
+    transparent 66%
+  );
+}
+
+/* ---------- furniture ---------- */
+.unit {
+  border: 10px solid var(--room-edge);
+  background:
+    var(--room-floor-tex),
+    linear-gradient(var(--room-carcass-a) 0%, var(--room-carcass-b) 58%, var(--room-carcass-c) 100%);
+  background-blend-mode: overlay, normal;
+  box-shadow:
+    /* the carcass is deeper than the frame; shade the back of it */
+    inset 0 0 90px rgba(0, 0, 0, 0.85),
+    inset 0 8px 18px rgba(0, 0, 0, 0.7),
+    /* a lit lip along the top edge */
+    inset 0 2px 0 rgba(255, 216, 168, 0.14),
+    /* contact shadow: without one, furniture floats */
+    0 30px 50px rgba(0, 0, 0, 0.6);
+}
+/* a floor crate of records, leaning back */
+.crate {
+  border-color: #2e1d0c;
+  border-width: 14px;
+  background:
+    var(--tex-grain),
+    linear-gradient(#754d23 0%, #4a2f15 60%, #2b1a0c 100%);
+  background-blend-mode: overlay, normal;
+  box-shadow:
+    inset 0 0 60px rgba(0, 0, 0, 0.62),
+    inset 0 2px 0 rgba(255, 216, 168, 0.16),
+    0 26px 46px rgba(0, 0, 0, 0.68);
+}
+/* the cd wallet, open on the table */
+.wallet {
+  border: 12px solid #171412;
+  border-radius: 8px;
+  /* nylon: fine weave, a spine crease down the middle, a zip highlight */
+  background:
+    var(--tex-weave),
+    linear-gradient(90deg, transparent 48.4%, rgba(0, 0, 0, 0.65) 49.6% 50.4%, transparent 51.6%),
+    linear-gradient(#332e28, #1c1815);
+  background-blend-mode: overlay, normal, normal;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 236, 206, 0.1),
+    0 24px 54px rgba(0, 0, 0, 0.7);
+}
+/* a shoebox of sticks and burned discs */
+.box {
+  border: 10px solid #5d4a2e;
+  /* cardboard: fibre, a lid seam, corners darkened by handling */
+  background:
+    var(--tex-card),
+    linear-gradient(#9a7c4e 0%, #7a6139 46%, #5f4b2c 100%);
+  background-blend-mode: overlay, normal;
+  box-shadow:
+    inset 0 0 40px rgba(0, 0, 0, 0.45),
+    inset 0 2px 0 rgba(255, 236, 206, 0.14),
+    0 18px 36px rgba(0, 0, 0, 0.6);
+}
+/* the ledge each row stands on */
+.ledge {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 16px;
+  background: linear-gradient(#5c4222, #2c1c0c);
+  transform-origin: top center;
+  transform: translateZ(30px) rotateX(84deg);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
+}
+.walletInner .ledge,
+.boxInner .ledge {
+  display: none;
+}
+
+/* a hand-written label on the shelf edge */
+.label {
+  position: absolute;
+  left: 50%;
+  bottom: -34px;
+  transform: translateX(-50%) translateZ(26px);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  color: var(--room-label);
+  background: rgba(12, 10, 8, 0.82);
+  border: 1px solid color-mix(in srgb, var(--room-label) 26%, transparent);
+  border-radius: 3px;
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+
+/* ---------- a sleeve, with actual thickness ---------- */
+.sleeve {
+  position: absolute;
+  background: #0d0a08;
+  cursor: pointer;
+  transform: translateZ(18px);
+  transform-style: preserve-3d;
+  transition:
+    transform 0.2s var(--ease),
+    box-shadow 0.2s var(--ease);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 236, 206, 0.07),
+    0 8px 16px rgba(0, 0, 0, 0.7);
+  padding: 0;
+  text-align: left;
+}
+/* the gloss sweep across a case, which is what makes it read as plastic */
+.sleeve::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    114deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.03) 18%,
+    transparent 38%
+  );
+}
+.sleeve::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 18px;
+  background: linear-gradient(90deg, #000, #2a211a);
+  transform-origin: left center;
+  transform: rotateY(90deg);
+}
+.art {
+  position: absolute;
+  inset: 4px 4px 24px 8px;
+  display: flex;
+  align-items: flex-end;
+  padding: 8px;
+  /* printed card, not a flat fill */
+  background-blend-mode: overlay;
+  box-shadow:
+    inset 0 -44px 40px rgba(0, 0, 0, 0.5),
+    inset 0 14px 26px rgba(255, 255, 255, 0.06);
+}
+.art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--tex-card);
+  opacity: 0.5;
+  mix-blend-mode: overlay;
+}
+.art span {
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.3;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+}
+.band {
+  position: absolute;
+  left: 8px;
+  right: 4px;
+  bottom: 4px;
+  height: 17px;
+  /* the printed strip on the case, slightly aged */
+  background:
+    var(--tex-card),
+    linear-gradient(#efe4ca, #ded0b0);
+  background-blend-mode: overlay, normal;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  padding: 0 5px;
+}
+.band em {
+  font-family: var(--mono);
+  font-size: 7px;
+  font-style: normal;
+  letter-spacing: 0.05em;
+  color: #2a2118;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.changed {
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.6),
+    0 0 0 2px var(--red);
+}
+.elsewhere {
+  filter: saturate(0.3) brightness(0.6);
+}
+/* the household's own clutter: unlabelled, non-interactive set dressing */
+.clutter {
+  pointer-events: none;
+  box-shadow: none;
+  filter: saturate(0.5) brightness(0.55);
+}
+.aimed {
+  transform: translateZ(52px) scale(1.05);
+  box-shadow:
+    0 0 34px 6px rgba(255, 206, 140, 0.55),
+    0 10px 26px rgba(0, 0, 0, 0.7);
+}
+.aimed.changed {
+  box-shadow:
+    0 0 34px 6px rgba(255, 150, 110, 0.6),
+    0 0 0 2px var(--red);
+}
+
+/* ---------- the things that make it a room ---------- */
+.table {
+  width: 620px;
+  height: 380px;
+  margin-left: -310px;
+  margin-top: -190px;
+  transform-origin: center;
+  /* tilted a little off flat so the top catches the lamps instead of
+     disappearing edge-on at eye level */
+  background:
+    var(--tex-wood),
+    linear-gradient(#74522f, #402b16);
+  background-blend-mode: overlay, normal;
+  border: 7px solid #241708;
+  border-radius: 10px;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 226, 184, 0.18),
+    0 34px 62px rgba(0, 0, 0, 0.7);
+}
+.couch {
+  width: 700px;
+  height: 300px;
+  margin-left: -350px;
+  margin-top: -150px;
+  /* upholstery: weave, two cushion seams, a lit top roll */
+  background:
+    var(--tex-weave),
+    linear-gradient(90deg, transparent 32%, rgba(0, 0, 0, 0.45) 33% 34%, transparent 35%),
+    linear-gradient(90deg, transparent 65%, rgba(0, 0, 0, 0.45) 66% 67%, transparent 68%),
+    linear-gradient(#5b4864 0%, #443552 46%, #261d2f 100%);
+  background-blend-mode: overlay, normal, normal, normal;
+  border-radius: 14px 14px 5px 5px;
+  box-shadow:
+    inset 0 4px 0 rgba(255, 236, 206, 0.12),
+    inset 0 -30px 40px rgba(0, 0, 0, 0.5),
+    0 26px 48px rgba(0, 0, 0, 0.68);
+}
+.tv {
+  width: 1180px;
+  height: 720px;
+  margin-left: -590px;
+  margin-top: -360px;
+  /* moulded plastic: a lit top edge, a shadowed underside, grain over both */
+  background:
+    var(--tex-grain),
+    linear-gradient(#4a423b 0%, #322b26 18%, #241e1a 62%, #14100e 100%);
+  background-blend-mode: overlay, normal;
+  border-radius: 26px 26px 16px 16px;
+  padding: 34px 34px 62px;
+  box-shadow:
+    inset 0 3px 0 rgba(255, 234, 200, 0.16),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.8),
+    0 40px 70px rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+/* the tube: recessed behind the bezel, with a curved black surround */
+.tube {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 40px / 30px;
+  overflow: hidden;
+  background: #05080a;
+  box-shadow:
+    inset 0 0 0 5px #0b0908,
+    inset 0 0 42px rgba(0, 0, 0, 0.95),
+    0 0 0 2px rgba(255, 234, 200, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* scanlines, a shadow mask and the corner vignette a real tube has */
+.tube::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.32) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(255, 0, 0, 0.05) 0 1px, rgba(0, 255, 0, 0.05) 1px 2px, rgba(0, 0, 255, 0.05) 2px 3px),
+    radial-gradient(ellipse at 50% 50%, transparent 52%, rgba(0, 0, 0, 0.72) 100%);
+}
+/* glass: one broad reflection across the top-left, the giveaway that it is
+   a screen you are looking at rather than a picture of one */
+.tube::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    142deg,
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.05) 16%,
+    transparent 42%
+  );
+}
+/* the speaker grille and a power lamp, under the tube */
+.grille {
+  position: absolute;
+  left: 40px;
+  right: 40px;
+  bottom: 20px;
+  height: 26px;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.6) 0 3px, rgba(255, 230, 190, 0.05) 3px 7px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.power {
+  position: absolute;
+  right: 48px;
+  bottom: 26px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #3a1a12;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.powerOn {
+  background: #ff6a3d;
+  box-shadow: 0 0 16px 4px rgba(255, 106, 61, 0.75);
+}
+.tvAimed {
+  box-shadow:
+    inset 0 3px 0 rgba(255, 234, 200, 0.16),
+    0 40px 70px rgba(0, 0, 0, 0.75),
+    0 0 0 3px rgba(159, 228, 196, 0.6);
+}
+/* the embed itself. pointer events off: the dial lives on the hud, so the
+   room keeps the mouse and pointer lock keeps working. */
+.screen {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+/* dead air: static, not a flat panel */
+.static {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    var(--tex-card),
+    radial-gradient(ellipse at 50% 45%, #16211b 0%, #070b09 78%);
+  background-blend-mode: overlay, normal;
+  opacity: 0.9;
+}
+/* Watching: the set fills the view. Walking a 3D room to squint at a screen
+   inside it is a worse way to watch something than just watching it, so this
+   steps out of the room rather than trying to fake a cinema seat. */
+.theatre {
+  position: fixed;
+  inset: 0;
+  z-index: 207;
+  background: #05060a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 3vh 3vw 12vh;
+}
+.theatreScreen {
+  position: relative;
+  width: min(100%, calc((100vh - 22vh) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+  box-shadow:
+    0 0 0 1px rgba(240, 226, 203, 0.12),
+    0 0 180px 40px rgba(120, 170, 255, 0.09);
+}
+.theatreScreen iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.theatreBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: #f0e2cb;
+}
+.theatreBar button {
+  border: 1px solid rgba(240, 226, 203, 0.35);
+  padding: 9px 16px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #f0e2cb;
+}
+.theatreBar button:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+.theatreTitle {
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  color: #fff;
+  text-align: center;
+  max-width: 60ch;
+}
+
+.osd {
+  position: absolute;
+  top: 14px;
+  left: 18px;
+  z-index: 3;
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0.18em;
+  color: #7dff9f;
+  text-shadow: 0 0 10px rgba(125, 255, 159, 0.9);
+  pointer-events: none;
+}
+.tv b {
+  font-family: var(--mono);
+  font-size: 14px;
+  letter-spacing: 0.2em;
+  color: #9fe4c4;
+  text-align: center;
+  line-height: 2;
+  text-shadow: 0 0 12px rgba(120, 230, 180, 0.7);
+}
+.tv::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.3) 0 2px, transparent 2px 4px);
+}
+
+/* the way out — and the thing that outlives you */
+.hatch {
+  width: 420px;
+  height: 300px;
+  margin-left: -210px;
+  margin-top: -150px;
+  background: linear-gradient(#3a2a1c, #1c130c);
+  border: 10px solid #241810;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  box-shadow: 0 0 90px rgba(255, 200, 130, 0.14);
+  cursor: pointer;
+}
+.hatch b {
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0.24em;
+  color: #edd0a4;
+  text-align: center;
+  line-height: 1.9;
+}
+.hatch small {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  opacity: 0.65;
+  color: #edd0a4;
+}
+
+/* ---------- hud ---------- */
+.hud {
+  position: fixed;
+  z-index: 206;
+  font-family: var(--mono);
+  color: #f0e2cb;
+  letter-spacing: 0.1em;
+  font-size: 0.68rem;
+}
+.hudTop {
+  top: 18px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 22px;
+  align-items: flex-start;
+  pointer-events: none;
+}
+.hudTop > * {
+  pointer-events: auto;
+}
+.exit {
+  border: 1px solid rgba(240, 226, 203, 0.6);
+  padding: 11px 20px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+.exit:hover,
+.exit:focus-visible {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+.exitHint {
+  display: block;
+  font-size: 0.56rem;
+  letter-spacing: 0.18em;
+  opacity: 0.7;
+  margin-top: 3px;
+}
+.now {
+  background: rgba(0, 0, 0, 0.48);
+  padding: 8px 14px;
+  border-radius: 99px;
+  border: 1px solid rgba(240, 226, 203, 0.18);
+}
+.hudBot {
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0 16px;
+}
+.hudBot button {
+  min-width: 50px;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(240, 226, 203, 0.35);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f0e2cb;
+  font-size: 0.72rem;
+}
+.hudBot button:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+.hint {
+  opacity: 0.55;
+  margin-left: 10px;
+  max-width: min(46ch, 90vw);
+}
+
+.retic {
+  position: fixed;
+  z-index: 205;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.retic::before,
+.retic::after {
+  content: "";
+  position: absolute;
+  background: rgba(255, 238, 214, 0.8);
+}
+.retic::before {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  margin-left: -0.5px;
+}
+.retic::after {
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  margin-top: -0.5px;
+}
+.reticHot {
+  opacity: 1;
+  transform: scale(1.5);
+}
+.reticHot::before,
+.reticHot::after {
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+}
+
+.aimLabel {
+  position: fixed;
+  z-index: 205;
+  left: 50%;
+  top: calc(50% + 26px);
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: #fff2e0;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 7px 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(240, 226, 203, 0.2);
+  pointer-events: none;
+  max-width: min(44ch, 86vw);
+}
+.aimLabel small {
+  display: block;
+  opacity: 0.6;
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  margin-top: 3px;
+}
+
+.shelfList {
+  position: fixed;
+  z-index: 205;
+  right: 22px;
+  bottom: 80px;
+  width: 190px;
+  background: rgba(0, 0, 0, 0.52);
+  border: 1px solid rgba(240, 226, 203, 0.2);
+  border-radius: 5px;
+  padding: 10px;
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+  color: #d6c8ae;
+}
+.shelfRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  opacity: 0.5;
+}
+.shelfRow.shelfOn {
+  opacity: 1;
+  color: #ffd9a8;
+}
+.shelfDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.stick {
+  position: fixed;
+  z-index: 205;
+  bottom: 96px;
+  left: 26px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1px solid rgba(240, 226, 203, 0.28);
+  background: rgba(0, 0, 0, 0.34);
+  touch-action: none;
+}
+.stick i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  background: rgba(240, 226, 203, 0.34);
+  border: 1px solid rgba(240, 226, 203, 0.45);
+}
+
+.vign {
+  position: fixed;
+  inset: 0;
+  z-index: 204;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 50%, transparent 46%, rgba(0, 0, 0, 0.72) 100%);
+}
+.dust {
+  position: fixed;
+  inset: 0;
+  z-index: 203;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    radial-gradient(1.4px 1.4px at 20% 30%, rgba(255, 226, 180, 0.6), transparent),
+    radial-gradient(1.2px 1.2px at 70% 60%, rgba(255, 226, 180, 0.45), transparent),
+    radial-gradient(1.6px 1.6px at 45% 80%, rgba(255, 226, 180, 0.32), transparent),
+    radial-gradient(1.1px 1.1px at 86% 22%, rgba(255, 226, 180, 0.34), transparent);
+  animation: dustdrift 16s ease-in-out infinite alternate;
+}
+@keyframes dustdrift {
+  to {
+    transform: translate3d(20px, -16px, 0);
+  }
+}
+
+/* ---------- the sleeve you pulled out ---------- */
+.inspect {
+  position: fixed;
+  inset: 0;
+  z-index: 208;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 8, 5, 0.76);
+  backdrop-filter: blur(3px);
+}
+.flip {
+  width: min(330px, 80vw);
+  aspect-ratio: 2/3;
+  perspective: 1200px;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.flipIn {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.7s var(--ease);
+}
+.flipped .flipIn {
+  transform: rotateY(180deg);
+}
+.face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7);
+}
+.faceFront {
+  background: #120e0b;
+  display: flex;
+  flex-direction: column;
+}
+.big {
+  flex: 1;
+  margin: 8px 8px 0;
+  border-radius: 2px;
+  display: flex;
+  align-items: flex-end;
+  padding: 14px;
+}
+.big span {
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  color: #fff;
+  line-height: 1.35;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+}
+.strip {
+  background: #e8dcc0;
+  margin: 8px;
+  padding: 7px 9px;
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  color: #2a2118;
+  letter-spacing: 0.06em;
+}
+.faceBack {
+  background: #17120e;
+  transform: rotateY(180deg);
+  padding: 22px 20px;
+  color: #f0e2cb;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  text-align: left;
+}
+.faceBack h3 {
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #fff;
+}
+.quote {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border-left: 2px solid var(--red);
+  padding-left: 11px;
+}
+.rt {
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.1em;
+  opacity: 0.65;
+}
+.offers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.offer {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+  padding: 5px 9px;
+  border-radius: 3px;
+  color: #fff;
+  text-decoration: none;
+}
+.tools {
+  position: absolute;
+  bottom: 34px;
+  display: flex;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 0 12px;
+}
+.tools button {
+  border: 1px solid rgba(240, 226, 203, 0.4);
+  padding: 9px 15px;
+  border-radius: 99px;
+  color: #f0e2cb;
+  background: rgba(0, 0, 0, 0.4);
+}
+.tools button:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dust {
+    animation: none;
+  }
+  .sleeve,
+  .flipIn {
+    transition: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .shelfList,
+  .hint {
+    display: none;
+  }
+}
+
+/* change building without leaving */
+.venuePick {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.venueLabel {
+  opacity: 0.55;
+}
+.venuePick select {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  color: #f0e2cb;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid rgba(240, 226, 203, 0.35);
+  border-radius: 5px;
+  padding: 11px 10px;
+}

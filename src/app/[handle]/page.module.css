@@ -1,0 +1,90 @@
+.page {
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 0 24px 80px;
+}
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.wordmark {
+  font-family: var(--serif);
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+.dot {
+  color: var(--red);
+}
+.handle {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+}
+
+.intro {
+  padding: 70px 0 46px;
+}
+.kicker {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  color: var(--phos);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.name {
+  font-weight: 400;
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+}
+.bio {
+  max-width: 52ch;
+  margin-top: 18px;
+  color: var(--ink-soft);
+  font-size: 1.02rem;
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 26px;
+  margin-top: 40px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+}
+.stats dt {
+  display: inline;
+}
+.stats dd {
+  display: inline;
+  margin-left: 6px;
+  color: var(--red);
+}
+
+.cta {
+  margin-top: 38px;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 60px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+}
