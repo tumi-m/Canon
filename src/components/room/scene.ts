@@ -115,6 +115,13 @@ export function buildStage(
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  /* Nothing that casts a shadow here ever moves — the shelves are furniture,
+     the lamps hang still. A point light's shadow is a cube map, six extra
+     renders of the whole scene, and with two lamps that was twelve extra
+     passes every frame to redraw shadows identical to the last ones. They
+     are drawn once, on the first frame, and kept. */
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.25;
   renderer.outputColorSpace = THREE.SRGBColorSpace;

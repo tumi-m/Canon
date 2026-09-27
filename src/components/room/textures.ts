@@ -31,14 +31,27 @@ function surface(w: number, h: number): CanvasRenderingContext2D {
   return ctx;
 }
 
-function finish(ctx: CanvasRenderingContext2D, repeat: [number, number]): THREE.Texture {
+function finish(ctx: CanvasRenderingContext2D): THREE.Texture {
   const texture = new THREE.CanvasTexture(ctx.canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(repeat[0], repeat[1]);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;
   return texture;
+}
+
+/**
+ * The same painting at a different tiling. A clone shares its source image,
+ * so three.js uploads the pixels once however many repeats ask for it — the
+ * floor and a shelf in the same timber used to paint and upload the grain
+ * twice, and painting grain is most of what the room does before first frame.
+ */
+function tiled(painted: THREE.Texture, repeat: [number, number]): THREE.Texture {
+  return memo(`${painted.uuid}:${repeat.join()}`, () => {
+    const texture = painted.clone();
+    texture.repeat.set(repeat[0], repeat[1]);
+    return texture;
+  });
 }
 
 /** Deterministic noise, so a texture looks the same every time it is drawn. */
@@ -52,7 +65,11 @@ function rand(seed: number): () => number {
 
 /** Long-grain timber: streaks along one axis, knots, a darker seam per plank. */
 export function woodTexture(base: string, repeat: [number, number] = [6, 6]): THREE.Texture {
-  return memo(`wood:${base}:${repeat.join()}`, () => {
+  return tiled(woodGrain(base), repeat);
+}
+
+function woodGrain(base: string): THREE.Texture {
+  return memo(`wood:${base}`, () => {
     const ctx = surface(512, 512);
     const r = rand(7);
     ctx.fillStyle = base;
@@ -88,13 +105,17 @@ export function woodTexture(base: string, repeat: [number, number] = [6, 6]): TH
     ctx.fillStyle = "rgba(255,240,220,0.06)";
     for (let i = 0; i < 4; i++) ctx.fillRect(0, i * 128 + 2, 512, 1);
 
-    return finish(ctx, repeat);
+    return finish(ctx);
   });
 }
 
 /** Plaster: fine isotropic tooth, no direction. */
 export function plasterTexture(base: string, repeat: [number, number] = [4, 2]): THREE.Texture {
-  return memo(`plaster:${base}:${repeat.join()}`, () => {
+  return tiled(plaster(base), repeat);
+}
+
+function plaster(base: string): THREE.Texture {
+  return memo(`plaster:${base}`, () => {
     const ctx = surface(512, 512);
     const r = rand(19);
     ctx.fillStyle = base;
@@ -107,13 +128,17 @@ export function plasterTexture(base: string, repeat: [number, number] = [4, 2]):
       img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2]! + n));
     }
     ctx.putImageData(img, 0, 0);
-    return finish(ctx, repeat);
+    return finish(ctx);
   });
 }
 
 /** Woven pile, for rugs and upholstery. */
 export function weaveTexture(a: string, b: string, repeat: [number, number] = [8, 8]): THREE.Texture {
-  return memo(`weave:${a}:${b}:${repeat.join()}`, () => {
+  return tiled(weave(a, b), repeat);
+}
+
+function weave(a: string, b: string): THREE.Texture {
+  return memo(`weave:${a}:${b}`, () => {
     const ctx = surface(256, 256);
     const r = rand(31);
     ctx.fillStyle = a;
@@ -136,7 +161,7 @@ export function weaveTexture(a: string, b: string, repeat: [number, number] = [8
       img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2]! + n));
     }
     ctx.putImageData(img, 0, 0);
-    return finish(ctx, repeat);
+    return finish(ctx);
   });
 }
 

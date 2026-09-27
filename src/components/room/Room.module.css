@@ -528,3 +528,17 @@
   border-radius: 5px;
   padding: 11px 10px;
 }
+
+/* between the click and the first frame: say something is happening */
+.entering {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: #f0e2cb;
+  background: var(--room-void);
+}

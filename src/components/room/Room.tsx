@@ -63,6 +63,9 @@ const LOOKMAP: Record<string, [number, number]> = {
 /** degrees a second, held down */
 const TURN = 108;
 
+/** how close a shelf has to be before the badge says you are at it */
+const NEAR_SHELF = 620;
+
 /**
  * The room is portalled to <body> rather than rendered where it is mounted.
  * It has to be: making the rest of the page inert means walking body's
@@ -101,6 +104,8 @@ function RoomScene({
   const exitRef = useRef<HTMLButtonElement>(null);
   const nubRef = useRef<HTMLElement>(null);
   const stageRef = useRef<Stage | null>(null);
+  /** what the set in the room is showing, kept so a rebuilt room shows it too */
+  const screenImage = useRef<HTMLImageElement | null>(null);
 
   const [at, setAt] = useState<string | null>(null);
   const [aimLabel, setAimLabel] = useState<{ title: string; hint: string } | null>(null);
@@ -108,9 +113,11 @@ function RoomScene({
   const [flipped, setFlipped] = useState(false);
   const [coarse, setCoarse] = useState(false);
   const [theatre, setTheatre] = useState(false);
-  const [ready, setReady] = useState(false);
+  /** the room is drawn on the gpu; say which of the three states it is in */
+  const [gl, setGl] = useState<"loading" | "ready" | "failed">("loading");
 
   const reduced = useRef(false);
+  const paused = useRef(false);
   const touch = useRef(false);
   const live = useRef<Live>({
     x: 0, z: G.spawnZ, yaw: 0, pitch: 0, vx: 0, vz: 0, bob: 0,
@@ -189,162 +196,236 @@ function RoomScene({
     touch.current = window.matchMedia("(pointer:coarse)").matches;
     setCoarse(touch.current);
 
-    let stage: Stage;
-    try {
-      stage = buildStage(canvas, world, place, entries, providerFor);
-    } catch {
-      // no webgl, or the context was refused. the list is always there.
-      setReady(false);
-      return;
-    }
-    stageRef.current = stage;
-    setReady(true);
-
     const L = live.current;
-    L.x = 0;
-    L.z = G.spawnZ;
 
-    const fit = () => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
+    const mount = (): (() => void) => {
+      let stage: Stage;
+      try {
+        stage = buildStage(canvas, world, place, entries, providerFor);
+      } catch {
+        // no webgl, or the context was refused. the list is always there.
+        setGl("failed");
+        return () => {};
+      }
+      stageRef.current = stage;
+      stage.setScreen(screenImage.current);
+
+      /* A rebuild — a different building, a different region — happens around
+         you. It used to walk you back to the door every time. */
+      [L.x, L.z] = collide(L.x, L.z, world.boxes, world.bounds);
+
+      // a driver reset or a backgrounded phone can take the gpu away mid-visit
+      const lost = (e: Event) => {
+        e.preventDefault();
+        cancelAnimationFrame(L.raf);
+        setGl("failed");
+      };
+      canvas.addEventListener("webglcontextlost", lost);
+
       // cap the pixel ratio: a 3x phone display is three times the pixels for
       // no visible gain in a room this dim
-      stage.resize(w, h, Math.min(window.devicePixelRatio || 1, 2));
-    };
-    fit();
-    window.addEventListener("resize", fit);
-
-    const raycaster = new THREE.Raycaster();
-    /**
-     * The reticle is a ring on the screen, not a mathematical point, so the
-     * pick samples the area it actually covers: the centre plus its rim. One
-     * ray can thread a seam between two touching cases and report nothing
-     * while the crosshair is plainly sitting on artwork.
-     */
-    const RETICLE = 0.022; // in NDC, about the radius the ring is drawn at
-    const probes = [
-      new THREE.Vector2(0, 0),
-      new THREE.Vector2(RETICLE, 0),
-      new THREE.Vector2(-RETICLE, 0),
-      new THREE.Vector2(0, RETICLE),
-      new THREE.Vector2(0, -RETICLE),
-    ];
-    /** whatever the reticle covers, nearest first */
-    const aimAt = (camera: THREE.Camera, targets: THREE.Object3D[]) => {
-      let best: THREE.Intersection | null = null;
-      for (const probe of probes) {
-        raycaster.setFromCamera(probe, camera);
-        const first = raycaster.intersectObjects(targets, true)[0];
-        if (first && (!best || first.distance < best.distance)) best = first;
-      }
-      return best;
-    };
-
-    const step = (dt: number) => {
-      // arrows first: where you are facing decides which way forward is
-      if (L.look.x || L.look.y) {
-        L.yaw += L.look.x * TURN * dt;
-        L.pitch = Math.max(-42, Math.min(42, L.pitch + L.look.y * TURN * dt));
-      }
-      const f = (L.keys.has("w") ? 1 : 0) - (L.keys.has("s") ? 1 : 0) + L.stick.y;
-      const r = (L.keys.has("d") ? 1 : 0) - (L.keys.has("a") ? 1 : 0) + L.stick.x;
-      const yaw = (L.yaw * Math.PI) / 180;
-      const ix = Math.sin(yaw) * f + Math.cos(yaw) * r;
-      const iz = -Math.cos(yaw) * f + Math.sin(yaw) * r;
-      const mag = Math.hypot(ix, iz);
-      const speed = G.speed;
-      const tx = mag ? (ix / mag) * speed : 0;
-      const tz = mag ? (iz / mag) * speed : 0;
-      const k = Math.min(1, dt * (reduced.current ? 40 : 9));
-      L.vx += (tx - L.vx) * k;
-      L.vz += (tz - L.vz) * k;
-      const [nx, nz] = collide(L.x + L.vx * dt, L.z + L.vz * dt, world.boxes, world.bounds);
-      L.x = nx;
-      L.z = nz;
-
-      const moving = Math.hypot(L.vx, L.vz);
-      L.bob += moving * dt * 0.024;
-      L.stride += moving * dt;
-      if (L.stride > STRIDE) {
-        L.stride = 0;
-        sound.current?.step();
-      }
-
-      // world.ts measures +y down; the scene is built +y up (see scene.ts)
-      const bob = reduced.current ? 0 : -Math.sin(L.bob) * 6;
-      stage.camera.position.set(L.x, bob, L.z);
-      stage.camera.rotation.set(0, 0, 0);
-      stage.camera.rotateY((L.yaw * Math.PI) / -180);
-      stage.camera.rotateX((L.pitch * Math.PI) / 180);
-      if (!reduced.current) stage.camera.rotateZ((Math.sin(L.bob * 0.5) * 0.45 * Math.PI) / 180);
-    };
-
-    const loop = (t: number) => {
-      /* Clamp only the pathological gap — a backgrounded tab coming back —
-         and let an honestly slow frame integrate at its real length. Capping
-         at a tenth of a second meant anything under 10fps walked in slow
-         motion, which is exactly the machine that can least afford it. */
-      const dt = Math.min(0.25, (t - L.last) / 1000 || 0.016);
-      L.last = t;
-      step(dt);
-
-      // the reticle is a real ray now: no cones, no thresholds, no hysteresis
-      if (++L.frame % 3 === 0) {
-        // the camera is not in the scene graph, so nothing else refreshes it;
-        // without this the ray is aimed a frame behind where you are looking
-        stage.camera.updateMatrixWorld();
-        const first = aimAt(stage.camera, stage.targets);
-        const hit = first && first.distance < 1500 ? hitOf(first.object) : null;
-        if (hit?.key !== L.aim?.key) {
-          L.aim = hit ?? null;
-          stage.highlight(hit && hit.kind === "sleeve" ? (first?.object ?? null) : null);
-          if (!hit) setAimLabel(null);
-          else
-            setAimLabel({
-              title: hit.label,
-              hint:
-                hit.kind === "capsule"
-                  ? "E · SEALED UNTIL ITS DATE"
-                  : hit.kind === "tv"
-                    ? "E · SIT DOWN AND WATCH"
-                    : "E · TAKE IT OFF THE SHELF",
-            });
+      const sharpest = Math.min(window.devicePixelRatio || 1, 2);
+      /* Resolution follows the frame rate. A machine that cannot hold ~30fps
+         at full resolution draws fewer pixels until it can, and earns them
+         back once it is comfortably quick again. A slightly softer room is
+         a far better trade than one that stutters every time you turn. */
+      let dpr = sharpest;
+      let pace = 1 / 60;
+      let settle = 1.5;
+      const fit = () => {
+        stage.resize(window.innerWidth, window.innerHeight, dpr);
+      };
+      const adapt = (dt: number) => {
+        pace += (dt - pace) * 0.08;
+        settle -= dt;
+        if (settle > 0) return;
+        if (pace > 1 / 28 && dpr > 0.6) {
+          dpr = Math.max(0.6, dpr * 0.75);
+          fit();
+          settle = 1;
+        } else if (pace < 1 / 55 && dpr < sharpest) {
+          dpr = Math.min(sharpest, dpr * 1.2);
+          fit();
+          settle = 3;
         }
-        /* what you are looking at beats what happens to be nearest: a small
-           crate in the middle of the floor is closer to most of the room than
-           the bookcase you are standing at reading. */
-        setAt(L.aim?.shelf ?? nearestUnit(world.units, L)?.label ?? null);
-      }
+      };
+      fit();
+      window.addEventListener("resize", fit);
 
-      stage.renderer.render(stage.scene, stage.camera);
+      const raycaster = new THREE.Raycaster();
+      /**
+       * The reticle is a ring on the screen, not a mathematical point, so the
+       * pick samples the area it actually covers: the centre plus its rim. One
+       * ray can thread a seam between two touching cases and report nothing
+       * while the crosshair is plainly sitting on artwork.
+       */
+      const RETICLE = 0.022; // in NDC, about the radius the ring is drawn at
+      const probes = [
+        new THREE.Vector2(0, 0),
+        new THREE.Vector2(RETICLE, 0),
+        new THREE.Vector2(-RETICLE, 0),
+        new THREE.Vector2(0, RETICLE),
+        new THREE.Vector2(0, -RETICLE),
+      ];
+      /** whatever the reticle covers, nearest first */
+      const aimAt = (camera: THREE.Camera, targets: THREE.Object3D[]) => {
+        let best: THREE.Intersection | null = null;
+        for (const probe of probes) {
+          raycaster.setFromCamera(probe, camera);
+          const first = raycaster.intersectObjects(targets, true)[0];
+          if (first && (!best || first.distance < best.distance)) best = first;
+        }
+        return best;
+      };
+
+      const step = (dt: number) => {
+        // arrows first: where you are facing decides which way forward is
+        if (L.look.x || L.look.y) {
+          L.yaw += L.look.x * TURN * dt;
+          L.pitch = Math.max(-42, Math.min(42, L.pitch + L.look.y * TURN * dt));
+        }
+        const f = (L.keys.has("w") ? 1 : 0) - (L.keys.has("s") ? 1 : 0) + L.stick.y;
+        const r = (L.keys.has("d") ? 1 : 0) - (L.keys.has("a") ? 1 : 0) + L.stick.x;
+        const yaw = (L.yaw * Math.PI) / 180;
+        const ix = Math.sin(yaw) * f + Math.cos(yaw) * r;
+        const iz = -Math.cos(yaw) * f + Math.sin(yaw) * r;
+        const mag = Math.hypot(ix, iz);
+        const speed = G.speed;
+        const tx = mag ? (ix / mag) * speed : 0;
+        const tz = mag ? (iz / mag) * speed : 0;
+        const k = Math.min(1, dt * (reduced.current ? 40 : 9));
+        L.vx += (tx - L.vx) * k;
+        L.vz += (tz - L.vz) * k;
+        const [nx, nz] = collide(L.x + L.vx * dt, L.z + L.vz * dt, world.boxes, world.bounds);
+        L.x = nx;
+        L.z = nz;
+
+        const moving = Math.hypot(L.vx, L.vz);
+        L.bob += moving * dt * 0.024;
+        L.stride += moving * dt;
+        if (L.stride > STRIDE) {
+          L.stride = 0;
+          sound.current?.step();
+        }
+
+        // world.ts measures +y down; the scene is built +y up (see scene.ts)
+        const bob = reduced.current ? 0 : -Math.sin(L.bob) * 6;
+        stage.camera.position.set(L.x, bob, L.z);
+        stage.camera.rotation.set(0, 0, 0);
+        stage.camera.rotateY((L.yaw * Math.PI) / -180);
+        stage.camera.rotateX((L.pitch * Math.PI) / 180);
+        if (!reduced.current) stage.camera.rotateZ((Math.sin(L.bob * 0.5) * 0.45 * Math.PI) / 180);
+      };
+
+      const loop = (t: number) => {
+        // behind the big screen the room is paused, not torn down
+        if (paused.current) {
+          L.last = t;
+          L.raf = requestAnimationFrame(loop);
+          return;
+        }
+        /* Clamp only the pathological gap — a backgrounded tab coming back —
+           and let an honestly slow frame integrate at its real length. Capping
+           at a tenth of a second meant anything under 10fps walked in slow
+           motion, which is exactly the machine that can least afford it. */
+        const dt = Math.min(0.25, (t - L.last) / 1000 || 0.016);
+        L.last = t;
+        adapt(dt);
+        step(dt);
+
+        // the reticle is a real ray now: no cones, no thresholds, no hysteresis
+        if (++L.frame % 3 === 0) {
+          // the camera is not in the scene graph, so nothing else refreshes it;
+          // without this the ray is aimed a frame behind where you are looking
+          stage.camera.updateMatrixWorld();
+          const first = aimAt(stage.camera, stage.targets);
+          const hit = first && first.distance < 1500 ? hitOf(first.object) : null;
+          if (hit?.key !== L.aim?.key) {
+            L.aim = hit ?? null;
+            stage.highlight(hit && hit.kind === "sleeve" ? (first?.object ?? null) : null);
+            if (!hit) setAimLabel(null);
+            else
+              setAimLabel({
+                title: hit.label,
+                hint:
+                  hit.kind === "capsule"
+                    ? "E · SEALED UNTIL ITS DATE"
+                    : hit.kind === "tv"
+                      ? "E · SIT DOWN AND WATCH"
+                      : "E · TAKE IT OFF THE SHELF",
+              });
+          }
+          /* what you are looking at beats what happens to be nearest: a small
+             crate in the middle of the floor is closer to most of the room than
+             the bookcase you are standing at reading. */
+          const near = nearestUnit(world.units, L);
+          const close = near && Math.hypot(near.fx - L.x, near.fz - L.z) < NEAR_SHELF;
+          // across the room from everything, you are simply in the room
+          setAt(L.aim?.shelf ?? (close ? near.label : null));
+        }
+
+        stage.renderer.render(stage.scene, stage.camera);
+        L.raf = requestAnimationFrame(loop);
+      };
+
+      L.last = performance.now();
       L.raf = requestAnimationFrame(loop);
+      setGl("ready");
+
+      return () => {
+        cancelAnimationFrame(L.raf);
+        window.removeEventListener("resize", fit);
+        canvas.removeEventListener("webglcontextlost", lost);
+        stage.dispose();
+        stageRef.current = null;
+      };
     };
 
-    L.last = performance.now();
-    stage.renderer.render(stage.scene, stage.camera);
-    // no point drawing a room nobody is looking at
-    if (!theatre) L.raf = requestAnimationFrame(loop);
-    exitRef.current?.focus({ preventScroll: true });
-
+    /* Painting the materials and compiling the shaders blocks the main thread
+       for a second or two. Two frames' grace lets "letting you in" actually
+       reach the screen first, instead of a click that appears to do nothing. */
+    setGl("loading");
+    let unmount: (() => void) | null = null;
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        unmount = mount();
+      });
+    });
     return () => {
-      cancelAnimationFrame(L.raf);
-      window.removeEventListener("resize", fit);
-      stage.dispose();
-      stageRef.current = null;
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+      unmount?.();
     };
-  }, [world, place, entries, providerFor, theatre]);
+  }, [world, place, entries, providerFor]);
+
+  /* the big screen pauses the room; nothing you were holding stays held */
+  useEffect(() => {
+    paused.current = theatre;
+    if (theatre) {
+      live.current.keys.clear();
+      live.current.look = { x: 0, y: 0 };
+    }
+  }, [theatre]);
+
+  // the way out has focus from the moment you are in, not once the gpu is done
+  useEffect(() => {
+    exitRef.current?.focus({ preventScroll: true });
+  }, []);
 
   /* the set shows the artwork of whatever is playing */
   useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
     if (!playing) {
-      stage.setScreen(null);
+      screenImage.current = null;
+      stageRef.current?.setScreen(null);
       return;
     }
     const image = new Image();
     image.crossOrigin = "anonymous";
-    image.onload = () => stageRef.current?.setScreen(image);
+    image.onload = () => {
+      screenImage.current = image;
+      stageRef.current?.setScreen(image);
+    };
     image.src = thumbnailFor(playing.videoId);
     return () => {
       image.onload = null;
@@ -356,6 +437,14 @@ function RoomScene({
     const L = live.current;
     const down = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
+      /* A focused control owns its own keys. Enter used to be taken for
+         "take it off the shelf" everywhere, which meant a keyboard could not
+         press the very button it had tabbed to. */
+      const control =
+        e.target instanceof Element && e.target.closest("button, a, select, input, textarea");
+      if (control && (k === "enter" || k === " ")) return;
+      // with a card in your hands, or the big screen up, you are not walking
+      if ((opened !== null || theatre) && (KEYMAP[k] || LOOKMAP[k])) return;
       if (KEYMAP[k]) {
         L.keys.add(KEYMAP[k]!);
         e.preventDefault();
@@ -537,12 +626,17 @@ function RoomScene({
         aria-label={`${displayName}'s ${place.noun}`}
       >
         <canvas ref={canvasRef} className={styles.canvas} />
-        {ready ? null : (
+        {gl === "failed" ? (
           <div className={styles.noGl}>
             <p>this browser would not draw the room.</p>
             <button onClick={onBrowseList}>☰ read it as a list instead</button>
           </div>
-        )}
+        ) : null}
+        {gl === "loading" ? (
+          <div className={styles.entering} role="status">
+            letting you into {displayName}&apos;s {place.noun}…
+          </div>
+        ) : null}
       </div>
 
       <div className={styles.dust} />

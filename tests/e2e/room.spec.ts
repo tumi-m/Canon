@@ -5,6 +5,8 @@ const openRoom = async (page: Page) => {
   await page.getByRole("button", { name: "step into the room" }).click();
   await expect(page.getByRole("button", { name: "let yourself out" })).toBeVisible();
   // the scene is a canvas now; wait for it to have a drawing buffer
+  // software gl under parallel workers takes seconds to paint the materials
+  await expect(page.locator("[data-canon-room] [role=status]")).toHaveCount(0, { timeout: 30_000 });
   await expect
     .poll(() => page.evaluate(() => (document.querySelector("canvas")?.width ?? 0) > 0))
     .toBe(true);
@@ -123,6 +125,29 @@ test.describe("watching and leaving", () => {
     await expect(page.locator("[data-venue=vault]")).toHaveCount(1);
     // the shelves are renamed in the vocabulary of the building
     await expect(page.getByText("sealed").first()).toBeVisible();
+  });
+
+  test("coming back from the big screen leaves you where you were", async ({ page }) => {
+    // it used to tear the whole room down and rebuild it at the door
+    await openRoom(page);
+    await walkUntilAimed(page);
+    const facing = await page.locator("[class*=aimLabel]").innerText();
+
+    await page.keyboard.press("t");
+    await expect(page.getByRole("dialog", { name: /watching/ })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: /watching/ })).toHaveCount(0);
+
+    await page.waitForTimeout(1500);
+    expect(await page.locator("[class*=aimLabel]").innerText()).toBe(facing);
+  });
+
+  test("a focused button answers to enter", async ({ page }) => {
+    // enter used to be swallowed as "take it off the shelf" wherever focus was
+    await openRoom(page);
+    await expect(page.getByRole("button", { name: "let yourself out" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("[data-canon-room]")).toHaveCount(0);
   });
 
   test("leaving is always one obvious control away", async ({ page }) => {
