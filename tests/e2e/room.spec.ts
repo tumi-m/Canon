@@ -161,3 +161,27 @@ test.describe("watching and leaving", () => {
     await expect(page.locator("[data-canon-room]")).toHaveCount(0);
   });
 });
+
+test.describe("on a touch screen", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("the controls keep clear of the stick", async ({ page }) => {
+    // the stick used to sit on top of the four step buttons
+    await openRoom(page);
+    const stick = await page.locator("[class*=stick]").boundingBox();
+    expect(stick).not.toBeNull();
+    const controls = page.locator("[class*=hudBot] button, [class*=hudBot] select");
+    const count = await controls.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      const box = await controls.nth(i).boundingBox();
+      if (!box) continue;
+      const overlaps =
+        box.x < stick!.x + stick!.width &&
+        box.x + box.width > stick!.x &&
+        box.y < stick!.y + stick!.height &&
+        box.y + box.height > stick!.y;
+      expect(overlaps, `control ${i} sits under the stick`).toBe(false);
+    }
+  });
+});

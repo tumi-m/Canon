@@ -32,4 +32,13 @@ test.describe("the wall", () => {
     // the wikipedia entries have no embeddable video, so they get a spine
     await expect(page.getByText("jiro dreams of sushi").first()).toBeVisible();
   });
+
+  test("reads the list shelf by shelf, the way the room keeps it", async ({ page }) => {
+    await page.goto("/tumelo?view=list");
+    const changed = page.getByRole("region", { name: /the ones that changed me/ });
+    await expect(changed).toBeVisible();
+    // the red tier's pieces live under the red tier's heading, and nowhere else
+    await expect(changed.getByText("making of gta 1, 1996")).toBeVisible();
+    await expect(page.getByRole("region", { name: /the good shelf/ })).toBeVisible();
+  });
 });

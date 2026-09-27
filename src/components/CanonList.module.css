@@ -37,6 +37,31 @@
   color: var(--paper);
 }
 
+/* a shelf, read as a list: the same names the room gives them */
+.shelf + .shelf {
+  margin-top: 40px;
+}
+.shelfName {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.shelf:first-child .shelfName {
+  color: var(--red);
+}
+.shelfCount {
+  font-size: 0.62rem;
+  opacity: 0.6;
+}
+
 .item {
   padding: 15px 4px;
   border-bottom: 1px dashed var(--line);

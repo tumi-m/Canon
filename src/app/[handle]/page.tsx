@@ -78,7 +78,7 @@ export default async function CanonPage({
             <dd>{runtime}</dd>
           </div>
           <div>
-            <dt>changed-me tier</dt>
+            <dt>changed me</dt>
             <dd>{changed}</dd>
           </div>
           <div>

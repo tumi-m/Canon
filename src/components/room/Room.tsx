@@ -600,6 +600,13 @@ function RoomScene({
     onPointerUp: () => live.current.keys.delete(key),
     onPointerLeave: () => live.current.keys.delete(key),
     onPointerCancel: () => live.current.keys.delete(key),
+    /* a click from the keyboard (detail 0) has no pointer to hold down, so it
+       takes one stride; these buttons used to do nothing at all from a key */
+    onClick: (e: React.MouseEvent) => {
+      if (e.detail !== 0) return;
+      live.current.keys.add(key);
+      window.setTimeout(() => live.current.keys.delete(key), 260);
+    },
   });
 
   const stickHandlers = {
@@ -668,10 +675,22 @@ function RoomScene({
       <div className={styles.vign} />
       <div className={`${styles.retic} ${aimLabel ? styles.reticHot : ""}`} />
       {aimLabel ? (
-        <div key={aimLabel.title} className={styles.aimLabel}>
-          {aimLabel.title}
-          <small>{aimLabel.hint}</small>
-        </div>
+        coarse ? (
+          // on touch the label is the button: there is no E key to press
+          <button
+            key={aimLabel.title}
+            className={`${styles.aimLabel} ${styles.aimTap}`}
+            onClick={() => activate(live.current.aim)}
+          >
+            {aimLabel.title}
+            <small>{aimLabel.hint.replace(/^E · /, "TAP · ")}</small>
+          </button>
+        ) : (
+          <div key={aimLabel.title} className={styles.aimLabel}>
+            {aimLabel.title}
+            <small>{aimLabel.hint}</small>
+          </div>
+        )
       ) : null}
 
       <div className={styles.shelfList}>
@@ -697,6 +716,11 @@ function RoomScene({
           ✕ let yourself out
           <span className={styles.exitHint}>OR PRESS ESC</span>
         </button>
+        <span className={styles.hint}>
+          {coarse
+            ? "drag the pad to walk · drag the room to look · tap what you are aiming at"
+            : "wasd to walk · arrows or mouse to look · e to take something off the shelf"}
+        </span>
         <span className={styles.now}>
           {playing
             ? `${channelLabel(channel)} · ${playing.title}`
@@ -704,59 +728,70 @@ function RoomScene({
         </span>
       </div>
 
-      <div className={`${styles.hud} ${styles.hudBot}`} inert={opened !== null ? true : undefined}>
-        <button title="step left" {...hold("a")}>◀</button>
-        <button title="step back" {...hold("s")}>▼</button>
-        <button title="step forward" {...hold("w")}>▲</button>
-        <button title="step right" {...hold("d")}>▶</button>
-        <button
-          onClick={() => {
-            setTvOn(true);
-            setTheatre(true);
-          }}
-          title="watch full size (t)"
-        >
-          ▶ watch
-        </button>
-        <button onClick={() => setTvOn((on) => !on)} title="the set in the room">
-          {tvOn ? "◼ set off" : "◻ set on"}
-        </button>
-        {tvOn && channels.length > 0 ? (
-          <>
-            <button onClick={() => tune(-1)} title="previous channel ([)">
-              ⏮
-            </button>
-            <button onClick={() => tune(1)} title="next channel (])">
-              ⏭
-            </button>
-            <button onClick={() => setMuted((m) => !m)} title="mute (m)">
-              {muted ? "🔇 unmute" : "🔊 mute"}
-            </button>
-          </>
-        ) : null}
-        <button onClick={toggleSound} title="room sound — footsteps, not a soundtrack">
-          {audible ? "◉ room sound" : "○ room sound"}
-        </button>
-        <label className={styles.venuePick}>
-          <span className={styles.venueLabel}>where</span>
-          <select
-            value={place.id}
-            onChange={(e) => onVenue(e.target.value as VenueId)}
-            aria-label="where you keep it"
+      <div
+        className={`${styles.hud} ${styles.hudBot} ${coarse ? styles.hudTouch : ""}`}
+        inert={opened !== null ? true : undefined}
+      >
+        {/* on a touch screen the stick walks you; the pad would sit under it */}
+        {coarse ? null : (
+          <div className={styles.pad} role="group" aria-label="walk">
+            <button aria-label="step left" title="step left (a)" {...hold("a")}>◀</button>
+            <button aria-label="step back" title="step back (s)" {...hold("s")}>▼</button>
+            <button aria-label="step forward" title="step forward (w)" {...hold("w")}>▲</button>
+            <button aria-label="step right" title="step right (d)" {...hold("d")}>▶</button>
+          </div>
+        )}
+        <div className={styles.group} role="group" aria-label="the television">
+          <button
+            onClick={() => {
+              setTvOn(true);
+              setTheatre(true);
+            }}
+            title="watch full size (t)"
           >
-            {VENUES.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button onClick={onBrowseList}>☰ read it as a list</button>
-        <span className={styles.hint}>
-          {coarse
-            ? "drag the pad to walk · drag the room to look · tap a sleeve"
-            : "wasd to walk · arrows to look · e to take something off the shelf"}
-        </span>
+            ▶ watch
+          </button>
+          <button onClick={() => setTvOn((on) => !on)} title="the set in the room" aria-pressed={tvOn}>
+            {tvOn ? "◼ set off" : "◻ set on"}
+          </button>
+          {tvOn && channels.length > 0 ? (
+            <>
+              <button onClick={() => tune(-1)} aria-label="previous channel" title="previous channel ([)">
+                ⏮
+              </button>
+              <button onClick={() => tune(1)} aria-label="next channel" title="next channel (])">
+                ⏭
+              </button>
+              <button onClick={() => setMuted((m) => !m)} title="mute (m)" aria-pressed={!muted}>
+                {muted ? "🔇 unmute" : "🔊 mute"}
+              </button>
+            </>
+          ) : null}
+        </div>
+        <div className={styles.group}>
+          <button
+            onClick={toggleSound}
+            title="room sound — footsteps, not a soundtrack"
+            aria-pressed={audible}
+          >
+            {audible ? "◉ sound" : "○ sound"}
+          </button>
+          <label className={styles.venuePick}>
+            <span className={styles.venueLabel}>where</span>
+            <select
+              value={place.id}
+              onChange={(e) => onVenue(e.target.value as VenueId)}
+              aria-label="where you keep it"
+            >
+              {VENUES.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button onClick={onBrowseList}>☰ read it as a list</button>
+        </div>
       </div>
 
       {theatre && playing ? (
@@ -816,6 +851,8 @@ function RoomScene({
                 >
                   <span>{openedEntry.work.title}</span>
                 </div>
+                {/* the why is the point of the product; it should not need a flip */}
+                <p className={styles.frontWhy}>{openedEntry.why}</p>
                 <div className={styles.strip}>
                   {openedEntry.work.runtime} ·{" "}
                   {offers[0]?.provider.name.toUpperCase() ?? "NOT STREAMING HERE"}
