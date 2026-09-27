@@ -48,9 +48,10 @@ CI runs typecheck → lint → test → build → e2e on every push and PR.
   Both are statically generated, server-rendered, and fully readable with
   javascript switched off — view and region are query params, so any way of
   looking at a canon is a URL you can send somebody.
-- **the room** — somebody's den, opened from a canon: shelves, a record crate,
-  a CD wallet on the coffee table, a shoebox of sticks, and a television that
-  plays the canon.
+- **the room** — somebody's den, opened from a canon and drawn on the GPU:
+  a bookcase, shelves along the walls, a record crate on the rug, lamps, dust
+  in the light, and a television that plays the canon. Five buildings to keep
+  it in.
 
 **What is deliberately not built:** anything needing a credential this build
 does not have — Supabase, Stripe, TMDB. There are no stubs pretending to work;
@@ -73,7 +74,9 @@ src/lib/availability.ts  where a thing can be watched, per region
 src/lib/runtime.ts     "1hr 47m" → minutes, and back
 src/lib/youtube.ts     id parsing, embeds, thumbnails, the channel dial
 src/lib/roomSound.ts   procedural footsteps — no assets, off by default
-src/components/room/   the walkable den — world.ts is geometry, Room.tsx draws it
+src/components/room/   the walkable den — world.ts is the model, scene.ts the meshes
+                       and light, textures.ts the painted materials, Room.tsx the
+                       camera, the hud and everything you can press
 prototype/canon.html   the original single-file prototype, kept as reference
 ```
 
@@ -95,50 +98,59 @@ callers.
 
 ### The room
 
-Not a shop — somebody's den, built entirely from CSS 3D transforms. No WebGL,
-no Three.js, no bundle. The canon is shelved the way a collection actually
-lives: a bookcase on the back wall for the ones that changed you, shelves along
-the side walls, record crates leaning on the rug, a CD wallet open on the
-coffee table, a shoebox of USB sticks under the side table. Lamps, floorboards,
-dust in the light.
+Not a shop — somebody's den. The canon is shelved the way a collection
+actually lives: a bookcase on the back wall for the ones that changed you,
+shelves along the side walls, a record crate on the rug. Floorboards, a rug,
+two pendant lamps, dust drifting through their light.
 
 | | |
 |---|---|
-| walk | `W A S D` / arrows, or hold the on-screen pad |
-| look | click to capture the mouse, or drag; touch drags to look |
-| take something off the shelf | `E` / `Enter`, or click while the reticle is on it |
+| walk | `W A S D`, the on-screen pad, or the stick on a touch screen |
+| look | arrow keys; or click to capture the mouse, or drag; touch drags to look |
+| take something off the shelf | `E` / `Enter`, click while the reticle is on it, or tap the label on touch |
 | watch full size | `T`, or look at the set and press `E` |
 | change channel | `[` and `]` · `M` mutes |
 | leave | `Esc`, or the button top-left. `Esc` unwinds one layer at a time |
 
-The camera is a real one: continuous acceleration, head bob, collision against
-every piece of furniture, and a reticle that resolves what you are looking at
-by projecting each sleeve into camera space.
+**How it is put together.** It is three.js (`three@0.181`, the one
+dependency the room adds), in four files:
 
-**How it is put together.** Geometry lives in `world.ts` as pure functions —
-world-space positions, collision boxes, the aim test — and is unit-tested
-without a browser. `Room.tsx` draws that description and runs the camera. The
-world is authored in plain world coordinates (`+x` right, `-z` further in, `+y`
-down, eye at `y=0`) and the `.world` element carries the inverse camera
-transform. A face turned by θ about Y maps its local `+x` to
-`(cos θ, 0, −sin θ)`, so one formula places the back wall, both side walls, and
-anything angled into the room.
+- `world.ts` — the model, as pure functions: where every shelf and sleeve
+  sits, the collision boxes, which shelf you are nearest. Unit-tested without
+  a browser. It is the same model the CSS-3D room used; the renderer swap did
+  not touch a line of the layout or its tests.
+- `scene.ts` — turns the model into meshes and lights, and owns everything
+  that moves on its own (dust, the pendants' sway, the capsule's glow, the
+  set's flicker, a case easing off its shelf) behind one `tick(t, dt)`.
+- `textures.ts` — wood, plaster, weave and every sleeve cover are painted at
+  runtime into canvases. There are no image assets to ship.
+- `Room.tsx` — the camera, the frame loop, the reticle, the HUD, the card
+  and the big screen.
 
-Three things are worth knowing before editing it, because each one cost a
-debugging session:
+Things worth knowing before editing it, because each one cost a debugging
+session:
 
-1. **CSS 3D has no depth buffer.** Siblings are painted in sorted order and ties
-   fall back to DOM order, so anything sharing a `z` with the furniture it sits
-   on has to be nudged deliberately proud of it.
-2. **The eye plane is fixed at the `perspective` distance.** Anything that
-   straddles it magnifies toward infinity and smears across the view. That is
-   what the cull pass is for, and why the room is bigger than a real one — you
-   must not be able to press your nose against a wall.
-3. **Sleeve positions are arithmetic, not measurement.** Reading
-   `offsetLeft`/`offsetTop` silently returns zero inside a `display:none`
-   subtree, which collapses every sleeve onto its shelf's centre and leaves the
-   reticle nothing to hit. A test asserts the rendered markup agrees with the
-   model.
+1. **`world.ts` measures `+y` down; three.js measures `+y` up.** The model
+   was authored for CSS transforms. Every vertical coordinate crosses into
+   the scene through one `up()` in `scene.ts` — skip it and the room is built
+   upside down, with the reticle aiming at a mirror of it.
+2. **Light is in candela, at the room's scale.** The room is ~2000 *units*
+   across and point lights fall off with the square of distance, so a lamp
+   needs an intensity in the millions. An intensity of 1 renders black.
+3. **The reticle is a real raycast over the ring it draws** — five rays, the
+   centre and the rim — and cases on a shelf touch. A single ray threads the
+   seam between two cases; a gap between cases is somewhere to stand square
+   in front of a bookcase and aim at nothing.
+4. **Shadows are drawn once.** Nothing that casts one ever moves, and each
+   lamp's shadow is a cube map — six extra renders of the room. The pendants
+   sway, but only their fittings; the lights stay where their shadows are.
+5. **Resolution follows the frame rate.** A machine that cannot hold ~30fps
+   draws fewer pixels (down to 0.6×) until it can, and earns them back.
+
+The room pauses — it is not torn down — behind the big screen, and a venue
+change rebuilds it around you rather than walking you back to the door. The
+materials take a second or two to paint, so a curtain with the owner's name
+on it covers the build and lifts once there is something to see.
 
 ### The television
 
@@ -154,12 +166,12 @@ Three deliberate constraints:
   is a shelf, not a feed.
 - **It starts muted**, because browsers block autoplay with sound. Unmuting is
   one key, and the HUD says so.
-- **The embed takes no pointer events.** The dial lives on the HUD, which keeps
-  pointer lock working and makes surfing feel like a television rather than a
-  web page.
+- **The set in the room shows the channel's artwork, not a player.** A
+  playing iframe cannot be a texture on a 3D screen, and a video you cannot
+  hear properly across a room is not worth pretending with. The picture
+  lights the room the way a screen does; the playing happens full size.
 
-A link with no video — a Wikipedia page, a film — gets no channel. The set says
-`NO SIGNAL` rather than showing a dead screen.
+A link with no video — a Wikipedia page, a film — gets no channel.
 
 ### Where you keep it
 
@@ -170,11 +182,11 @@ vault** (steel and concrete), **the seed bank** (cold storage cut into rock),
 without leaving.
 
 A venue is a palette and a vocabulary, not a second implementation. The
-geometry in `world.ts` is shared; every surface reads its colour from a CSS
-custom property that `[data-venue]` overrides in `globals.css`, and the four
+geometry in `world.ts` is shared; each venue in `venues.ts` carries the colours
+the materials are painted in and how hard the room is lit, and the four
 weight tiers get renamed in the building's own words — *the ones that changed
 me* in the den is *sealed* in the vault and *the seed stock* in the bank.
-Adding one is a token block and four names.
+Adding one is a palette and four names.
 
 ### Watching
 
@@ -199,12 +211,20 @@ because browsers require one, and it ducks itself out of the way whenever the
 television is on.
 
 **Getting out.** The room is an enhancement, never a requirement. `☰ read it as
-a list` returns you to the canon, and `prefers-reduced-motion` disables head
-bob, camera roll and dust drift.
+a list` returns you to the canon, and if the browser will not draw WebGL — or
+loses the context mid-visit — the room says so and offers the list.
+
+**Motion.** The walk in through the door, the dust, the swaying pendants, the
+case coming up into your hands, the big screen switching on like a tube, the
+front page arriving in reading order, the wall's tiles rising as you scroll:
+all of it is decoration on top of something that already works, and all of it
+is off under `prefers-reduced-motion` — the room reads the same setting and
+holds still.
 
 **Keyboard.** The room portals to `<body>` and makes everything else `inert`,
 so Tab cycles its own controls instead of wandering into the canon behind it;
-the flip card does the same to the HUD. `Esc` unwinds one layer at a time —
+the card and the big screen do the same to the HUD, and the big screen takes
+focus when it opens. `Esc` unwinds one layer at a time —
 card, then mouse capture, then the room — and leaving returns focus to whatever
 opened it. Contained while you are in it, never a trap.
 
@@ -215,13 +235,10 @@ a real canon entry, and the only things you can walk into are the things
 holding the collection. Deleting them improved the look more than any texture
 did — they were five low-quality objects competing with the four that matter.
 
-**Light.** CSS 3D has no lighting, so the five translucent discs that used to
-stand in for lamps only ever read as smudges. Two pendants remain, each an
-actual object — cord, enamel shade lit along its rim, a hot filament beneath —
-and the light they appear to cast is painted into the walls, floor and ceiling
-as gradients positioned where the pools would fall. That is the only place
-light can honestly live in a renderer that has none, and it costs nothing per
-frame.
+**Light.** Two pendant lamps are real point lights with soft shadows; an
+ambient term, a sky/floor bounce and a soft key over the shoulder carry the
+rest, so nothing is lit from one point only. The set in the room is a light
+too, once it is on.
 
 ---
 

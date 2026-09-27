@@ -216,6 +216,9 @@ function RoomScene({
       }
       stageRef.current = stage;
       stage.setScreen(screenImage.current);
+      // whatever the reticle was holding belonged to the room that just went
+      L.aim = null;
+      setAimLabel(null);
 
       /* A rebuild — a different building, a different region — happens around
          you. It used to walk you back to the door every time. */
@@ -634,6 +637,8 @@ function RoomScene({
     },
   };
 
+  /** a card in your hands or the big screen up: what is behind is out of reach */
+  const covered = opened !== null || (theatre && !!playing);
   const openedEntry = opened === null ? undefined : entries[opened];
   const offers = openedEntry ? offersFor(openedEntry.work.id, region) : [];
   const openedThumb = openedEntry ? thumbnailForEntry(openedEntry) : undefined;
@@ -674,7 +679,7 @@ function RoomScene({
       <div className={styles.dust} />
       <div className={styles.vign} />
       <div className={`${styles.retic} ${aimLabel ? styles.reticHot : ""}`} />
-      {aimLabel ? (
+      {aimLabel && !covered ? (
         coarse ? (
           // on touch the label is the button: there is no E key to press
           <button
@@ -711,7 +716,7 @@ function RoomScene({
         </div>
       ) : null}
 
-      <div className={`${styles.hud} ${styles.hudTop}`}>
+      <div className={`${styles.hud} ${styles.hudTop}`} inert={covered ? true : undefined}>
         <button ref={exitRef} className={styles.exit} onClick={onLeave}>
           ✕ let yourself out
           <span className={styles.exitHint}>OR PRESS ESC</span>
@@ -730,7 +735,7 @@ function RoomScene({
 
       <div
         className={`${styles.hud} ${styles.hudBot} ${coarse ? styles.hudTouch : ""}`}
-        inert={opened !== null ? true : undefined}
+        inert={covered ? true : undefined}
       >
         {/* on a touch screen the stick walks you; the pad would sit under it */}
         {coarse ? null : (
@@ -821,7 +826,10 @@ function RoomScene({
             <button onClick={() => tune(-1)}>⏮ previous</button>
             <button onClick={() => tune(1)}>⏭ next</button>
             <button onClick={() => setMuted((m) => !m)}>{muted ? "🔇 unmute" : "🔊 mute"}</button>
-            <button onClick={() => setTheatre(false)}>↩ back to the room</button>
+            {/* focus starts inside the screen, so the keyboard is where the eyes are */}
+            <button onClick={() => setTheatre(false)} autoFocus>
+              ↩ back to the room
+            </button>
             <button onClick={onLeave}>✕ leave</button>
           </div>
         </div>

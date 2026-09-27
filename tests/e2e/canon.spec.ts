@@ -4,7 +4,9 @@ test.describe("a canon", () => {
   test("renders someone's canon without javascript doing the work", async ({ page }) => {
     await page.goto("/tumelo");
     await expect(page.getByRole("heading", { name: "tumelo" })).toBeVisible();
-    await expect(page.getByText("making of gta 1, 1996")).toBeVisible();
+    // the heading, not any text: a tile whose artwork fails to load sets the
+    // title large in the frame as well, so the words can appear twice
+    await expect(page.getByRole("heading", { name: "making of gta 1, 1996" })).toBeVisible();
     await expect(page.getByText("proof that world-changing things start scrappy")).toBeVisible();
   });
 

@@ -15,7 +15,7 @@ milestone; update it before finishing one.
 | **M3 · Entries & the text view** | 🟡 the *view* is built and server-rendered; the paste-a-link flow, metadata resolution and reordering are not — they need M1/M2 |
 | **M3.5 · YouTube** | ✅ id parsing, embeds, thumbnails, and the channel dial in the room |
 | **M4 · Availability layer** | 🟡 the shape is built (per-region offers, per-item attribution, no synthesised deep links); the live TMDB fetch and Redis cache are not — **blocked**: needs `TMDB_API_KEY` |
-| **M5 · The room** | ✅ ported to React and shipping — reframed from a video shop to a den |
+| **M5 · The room** | ✅ shipping — a den drawn with three.js (moved off CSS 3D), five venues, the television, motion throughout |
 | **M6 · Audiences, invites, capsules** | 🟡 the *shapes* exist in `src/lib/schema.ts`; **nothing is enforced** — blocked on M1 |
 | **M7 · Membership** | ⬜ not started — **blocked**: needs Stripe keys |
 | **M8 · Regional archive** | ⬜ not started |
@@ -35,11 +35,13 @@ accounts:
 - `/[handle]` — a canon, statically generated, server-rendered, readable with
   javascript switched off. Region is a query param (`?region=us`), so switching
   region is a plain link and stays shareable.
-- `/[handle]` → **the room** — a walkable CSS-3D den: a bookcase for the ones
-  that changed you, shelves along the walls, record crates on the rug, a CD
-  wallet on the coffee table, a shoebox of sticks. Lives in
+- `/[handle]` → **the room** — a walkable den drawn with three.js: a bookcase
+  for the ones that changed you, shelves along the walls, a record crate on
+  the rug, lamps with real light and shadow, dust in the air. Lives in
   `src/components/room/` and mounts on demand, so it costs nothing to anyone
-  who never opens it.
+  who never opens it. The renderer moved off CSS 3D because every bug the old
+  one grew came from having no depth buffer, no lights and a fixed eye plane;
+  `world.ts`, the model, did not change.
 
 **The sharing model,** as shapes only. Canon is not a public feed: a room is
 yours and you name who walks into it. `audienceSchema` carries `private` /
@@ -91,12 +93,18 @@ anything. A capsule that is only sealed in a component is not sealed.
    the per-item JustWatch credit (`ATTRIBUTION`, asserted in both the unit and
    e2e suites) and the rule that a click target is a TMDB watch page, never a
    synthesised provider deep link.
-5. **The room's geometry is pure and tested** (`src/components/room/world.ts`).
-   Three CSS-3D traps are documented in the README and encoded as tests — no
-   depth buffer, the fixed eye plane, and the fact that the world is authored in
-   arithmetic rather than measured off the DOM. Read those before moving props.
+5. **The room's model is pure and tested** (`src/components/room/world.ts`),
+   and the renderer is `scene.ts`. The README lists the traps that each cost a
+   session — `world.ts` is `+y` down and three.js `+y` up, lights are in
+   candela at the room's scale, shadows are drawn once — read those before
+   moving anything.
+6. **Commit before you stop.** A whole session's renderer rewrite was once
+   lost uncommitted when the cloud container was reclaimed, and had to be
+   rebuilt from the transcript. Push at every green point.
 7. **Two things this environment could not verify.** YouTube's CDN is
    unreachable from the sandbox, so no thumbnail and no embed has been *seen*
    to load — the wiring is unit-tested, the network path is not. And frame rate
-   is still unverified: everything has been driven headless, where Chromium
-   software-rasterises at a few fps. Both want a look on the first real deploy.
+   on real hardware is still unmeasured: everything has been driven headless,
+   where Chromium software-rasterises at a few fps. The room now lowers its
+   own resolution when frames run slow, so the headless screenshots are softer
+   than a real GPU will draw. Both want a look on the first real deploy.

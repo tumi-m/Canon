@@ -449,12 +449,19 @@ export function buildStage(
   targets.push(capsule);
 
   /* ---------- artwork, once it loads ---------- */
+  /* Artwork arrives whenever the network gets round to it — sometimes after
+     this room has been torn down for a different building. A late arrival
+     then painted a texture onto a disposed material and leaked it. */
+  let disposed = false;
+  const loading: HTMLImageElement[] = [];
   for (const { mesh, entry, hue } of pending) {
     const src = thumbnailForEntry(entry);
     if (!src) continue;
     const image = new Image();
+    loading.push(image);
     image.crossOrigin = "anonymous";
     image.onload = () => {
+      if (disposed) return;
       const material = (mesh.material as THREE.Material[])[4] as THREE.MeshStandardMaterial;
       material.map?.dispose();
       material.map = coverTexture({
@@ -558,6 +565,8 @@ export function buildStage(
       renderer.setSize(width, height, false);
     },
     dispose() {
+      disposed = true;
+      for (const image of loading) image.onload = null;
       for (const thing of disposables) thing.dispose();
       for (const material of coverMaterials) {
         (material as THREE.MeshStandardMaterial).map?.dispose();

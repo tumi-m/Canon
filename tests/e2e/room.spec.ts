@@ -120,6 +120,22 @@ test.describe("watching and leaving", () => {
     await expect(page.locator("[data-canon-room]")).toHaveCount(0);
   });
 
+  test("the big screen keeps the keyboard with it", async ({ page }) => {
+    // it opened with focus left behind it, and tab walked the hud underneath
+    await openRoom(page);
+    await page.keyboard.press("t");
+    const theatre = page.getByRole("dialog", { name: /watching/ });
+    await expect(theatre.getByRole("button", { name: "back to the room" })).toBeFocused();
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press("Tab");
+      const inside = await page.evaluate(() => {
+        const el = document.activeElement;
+        return !el || el === document.body || !!el.closest("[role=dialog]") || el.tagName === "IFRAME";
+      });
+      expect(inside).toBe(true);
+    }
+  });
+
   test("you can change building without leaving", async ({ page }) => {
     await openRoom(page);
     await expect(page.locator("[data-venue=den]")).toHaveCount(1);
