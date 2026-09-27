@@ -65,7 +65,7 @@
   background: var(--red);
   transform: scaleX(0);
   transform-origin: left;
-  animation: underdraw 1s 0.6s var(--ease) forwards;
+  animation: underdraw 1s 1s var(--ease) forwards;
 }
 @keyframes underdraw {
   to {
@@ -132,4 +132,92 @@
   font-size: 0.64rem;
   letter-spacing: 0.08em;
   color: var(--ink-soft);
+}
+
+/* ---------- motion ---------- */
+
+/* the page arrives in reading order */
+.kicker,
+.h1,
+.lede,
+.ticker,
+.canons,
+.state {
+  animation: heroRise 0.9s var(--ease) both;
+}
+.h1 {
+  animation-delay: 0.08s;
+}
+.lede {
+  animation-delay: 0.2s;
+}
+.ticker {
+  animation-delay: 0.32s;
+}
+.canons {
+  animation-delay: 0.42s;
+}
+.state {
+  animation-delay: 0.54s;
+}
+@keyframes heroRise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(4px);
+  }
+}
+
+/* a shelf of real titles, sliding past slowly; it stops when you look at it */
+.ticker {
+  margin-top: 46px;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  mask-image: linear-gradient(90deg, transparent, black 10%, black 90%, transparent);
+}
+.tickerTrack {
+  display: flex;
+  width: max-content;
+  animation: tick 70s linear infinite;
+}
+.ticker:hover .tickerTrack {
+  animation-play-state: paused;
+}
+.tickerItem {
+  padding: 12px 22px;
+  font-family: var(--serif);
+  font-size: 1.02rem;
+  font-style: italic;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  border-right: 1px dashed var(--line);
+}
+.tickerItem:nth-child(3n) {
+  color: var(--red);
+}
+@keyframes tick {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.canonLink {
+  position: relative;
+}
+.canonLink::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 1px;
+  width: 100%;
+  background: var(--red);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.45s var(--ease);
+}
+.canonLink:hover::before,
+.canonLink:focus-visible::before {
+  transform: scaleX(1);
 }

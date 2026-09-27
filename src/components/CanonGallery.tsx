@@ -22,13 +22,15 @@ export default function CanonGallery({
 }) {
   return (
     <div className={styles.wall}>
-      {entries.map((entry) => {
+      {entries.map((entry, i) => {
         const art = thumbnailForEntry(entry);
         const offers = offersFor(entry.work.id, region);
         return (
           <a
             key={entry.work.id}
             className={`${styles.tile} ${entry.weight === 3 ? styles.changed : ""}`}
+            // the stagger index for the reveal; a custom property, not a style
+            style={{ "--i": Math.min(i, 9) } as React.CSSProperties}
             href={entry.work.url}
             target="_blank"
             rel="noopener noreferrer"

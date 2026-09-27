@@ -46,7 +46,10 @@ export default function RoomLauncher({
           </select>
         </label>
       </div>
-      <p className={styles.blurb}>{VENUES.find((v) => v.id === venue)?.blurb}</p>
+      {/* keyed on the venue, so a new building's line fades in rather than snapping */}
+      <p key={venue} className={styles.blurb}>
+        {VENUES.find((v) => v.id === venue)?.blurb}
+      </p>
       {note ? (
         <p className={styles.note} role="status">
           {note}

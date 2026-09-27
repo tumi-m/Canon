@@ -4,6 +4,8 @@ import styles from "./page.module.css";
 
 export default function Home() {
   const handles = allHandles();
+  // every title anybody keeps, for the shelf that runs along under the pitch
+  const titles = handles.flatMap((handle) => getCanon(handle)?.entries.map((e) => e.work.title) ?? []);
 
   return (
     <main className={styles.page}>
@@ -25,6 +27,21 @@ export default function Home() {
           a room you can walk into, shown to the people you invite, and left to
           the ones who come after. not a feed.
         </p>
+
+        {titles.length ? (
+          /* decoration made of the product: the real titles on the real
+             shelves, drifting past. the canons themselves are listed below,
+             so this is hidden from assistive tech rather than read twice. */
+          <div className={styles.ticker} aria-hidden="true">
+            <div className={styles.tickerTrack}>
+              {[...titles, ...titles].map((title, i) => (
+                <span key={i} className={styles.tickerItem}>
+                  {title}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className={styles.canons}>
           {handles.map((handle) => {

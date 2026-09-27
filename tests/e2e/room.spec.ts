@@ -105,10 +105,12 @@ test.describe("watching and leaving", () => {
     const theatre = page.getByRole("dialog", { name: /watching/ });
     await expect(theatre).toBeVisible();
     const frame = theatre.locator("iframe");
-    const box = await frame.boundingBox();
     const view = page.viewportSize()!;
-    // "much bigger" is the requirement: the screen has to dominate the viewport
-    expect(box!.width).toBeGreaterThan(view.width * 0.6);
+    // "much bigger" is the requirement: the screen has to dominate the viewport.
+    // polled, because it switches on like a tube — a line first, then the picture
+    await expect
+      .poll(async () => (await frame.boundingBox())?.width ?? 0)
+      .toBeGreaterThan(view.width * 0.6);
 
     await page.keyboard.press("Escape");
     await expect(theatre).toHaveCount(0);

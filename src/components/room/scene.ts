@@ -51,6 +51,12 @@ export type Stage = {
   /** lift whatever the reticle is on, and drop whatever it left */
   highlight(object: THREE.Object3D | null): void;
   resize(width: number, height: number, dpr: number): void;
+  /**
+   * Advance everything that moves on its own: dust in the lamplight, the
+   * pendants, the capsule's glow, the set's flicker, and a case easing off
+   * or back onto its shelf. `t` and `dt` are in seconds.
+   */
+  tick(t: number, dt: number): void;
   dispose(): void;
 };
 
@@ -103,12 +109,36 @@ function buildUnit(unit: Unit, timber: THREE.Material, board: THREE.Material): T
   return group;
 }
 
+/** Ease a value toward a target at a rate that does not depend on frame rate. */
+const approach = (from: number, to: number, rate: number, dt: number) =>
+  to + (from - to) * Math.exp(-rate * dt);
+
+/** A soft round dot, for dust. Drawn, like every other texture here. */
+function moteSprite(): THREE.Texture {
+  const size = 64;
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  if (ctx) {
+    const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.35, "rgba(255,255,255,0.45)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+  }
+  return new THREE.CanvasTexture(c);
+}
+
 export function buildStage(
   canvas: HTMLCanvasElement,
   world: World,
   venue: Venue,
   entries: readonly Entry[],
   providerFor: (entry: Entry) => string,
+  /** prefers-reduced-motion: nothing moves unless you move it */
+  still = false,
 ): Stage {
   const p = venue.palette;
 
@@ -209,6 +239,7 @@ export function buildStage(
   key.position.set(600, 900, 900);
   scene.add(key);
 
+  const pendants: { group: THREE.Group; phase: number }[] = [];
   for (const lamp of world.lamps) {
     /* Intensity is in candela and falls off with the square of the distance,
        so it has to be expressed in the scale the world is actually built at.
@@ -222,28 +253,84 @@ export function buildStage(
     light.shadow.bias = -0.002;
     scene.add(light);
 
-    // the fitting itself: a shade you can see, with a bulb glowing under it
+    /* The fitting hangs from a pivot at the ceiling rose, so it can sway
+       the way a pendant does in a draught. Only the fitting moves: the light
+       stays put, because its shadows are drawn once and a light that
+       wandered away from them would give the game away. */
+    const drop = Math.abs(lamp.y - G.ceilY);
+    const fitting = new THREE.Group();
+    fitting.position.set(lamp.x, up(G.ceilY), lamp.z);
+    scene.add(fitting);
+    pendants.push({ group: fitting, phase: hash(lamp.key) % 628 / 100 });
+
     const shade = new THREE.Mesh(
       new THREE.ConeGeometry(84, 66, 24, 1, true),
       keep(new THREE.MeshStandardMaterial({ color: p.timber, side: THREE.DoubleSide, roughness: 0.5 })),
     );
-    shade.position.set(lamp.x, up(lamp.y), lamp.z);
-    scene.add(shade);
+    shade.position.set(0, -drop, 0);
+    fitting.add(shade);
 
     const bulb = new THREE.Mesh(
       new THREE.SphereGeometry(22, 16, 12),
       keep(new THREE.MeshBasicMaterial({ color: new THREE.Color(p.light), toneMapped: false })),
     );
-    bulb.position.set(lamp.x, up(lamp.y) - 40, lamp.z);
-    scene.add(bulb);
+    bulb.position.set(0, -drop - 40, 0);
+    fitting.add(bulb);
 
     const cord = new THREE.Mesh(
-      new THREE.CylinderGeometry(2, 2, Math.abs(lamp.y - G.ceilY), 6),
+      new THREE.CylinderGeometry(2, 2, drop, 6),
       keep(new THREE.MeshStandardMaterial({ color: "#120d0b", roughness: 1 })),
     );
-    cord.position.set(lamp.x, up((G.ceilY + lamp.y) / 2), lamp.z);
-    scene.add(cord);
+    cord.position.set(0, -drop / 2, 0);
+    fitting.add(cord);
   }
+
+  /* ---------- dust in the light ----------
+     A few hundred motes drifting through the lamplight. It is the cheapest
+     thing in the room — one draw call, a few hundred numbers a frame — and
+     it is most of what makes still air read as air. */
+  const MOTES = 320;
+  const home = new Float32Array(MOTES * 3);
+  const drift = new Float32Array(MOTES * 3);
+  const seeded = (() => {
+    let n = 0x9e3779b9;
+    return () => {
+      n = (n * 1664525 + 1013904223) >>> 0;
+      return n / 0xffffffff;
+    };
+  })();
+  for (let i = 0; i < MOTES; i++) {
+    // gathered under the lamps, where lit dust is visible, with a few strays
+    const lamp = world.lamps[i % Math.max(1, world.lamps.length)];
+    const near = seeded() < 0.8 && lamp;
+    home[i * 3] = near ? lamp.x + (seeded() - 0.5) * 900 : (seeded() - 0.5) * G.roomX * 1.8;
+    home[i * 3 + 1] = up(G.floorY) + 40 + seeded() * (G.floorY - G.ceilY - 140);
+    home[i * 3 + 2] = near ? lamp.z + (seeded() - 0.5) * 900 : G.backZ + seeded() * (G.frontZ - G.backZ);
+    drift[i * 3] = seeded() * Math.PI * 2;
+    drift[i * 3 + 1] = 0.12 + seeded() * 0.3;
+    drift[i * 3 + 2] = 18 + seeded() * 40;
+  }
+  const moteGeometry = new THREE.BufferGeometry();
+  const motePositions = new THREE.BufferAttribute(home.slice(), 3);
+  motePositions.setUsage(THREE.DynamicDrawUsage);
+  moteGeometry.setAttribute("position", motePositions);
+  const dust = new THREE.Points(
+    moteGeometry,
+    keep(
+      new THREE.PointsMaterial({
+        color: new THREE.Color(p.light),
+        map: keep(moteSprite()),
+        size: 5,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    ),
+  );
+  dust.frustumCulled = false;
+  scene.add(dust);
 
   /* ---------- shelves and sleeves ---------- */
   const targets: THREE.Object3D[] = [];
@@ -337,7 +424,16 @@ export function buildStage(
   /* ---------- the capsule ---------- */
   const capsule = new THREE.Mesh(
     new THREE.BoxGeometry(400, 500, 60),
-    keep(new THREE.MeshStandardMaterial({ color: p.timber, roughness: 0.45, metalness: 0.25 })),
+    keep(
+      new THREE.MeshStandardMaterial({
+        color: p.timber,
+        roughness: 0.45,
+        metalness: 0.25,
+        // it breathes, faintly: the one thing in the room that is waiting
+        emissive: new THREE.Color(p.light),
+        emissiveIntensity: 0.04,
+      }),
+    ),
   );
   capsule.position.set(-690, up(-70), world.hatchZ + 40);
   capsule.rotation.y = (18 * Math.PI) / 180;
@@ -376,6 +472,26 @@ export function buildStage(
   }
 
   let lifted: THREE.Object3D | null = null;
+  /** cases still easing off or back onto their shelf */
+  const moving = new Set<THREE.Object3D>();
+  let screenOn = false;
+  const capsuleMat = capsule.material as THREE.MeshStandardMaterial;
+
+  /** where a case wants to be: out and a touch larger if held, home if not */
+  const settle = (object: THREE.Object3D, dt: number) => {
+    const rest = object.userData["rest"] as number;
+    const held = object === lifted;
+    const z = held ? rest + 46 : rest;
+    const k = held ? 1.06 : 1;
+    if (still) {
+      object.position.z = z;
+      object.scale.setScalar(k);
+      return true;
+    }
+    object.position.z = approach(object.position.z, z, 14, dt);
+    object.scale.setScalar(approach(object.scale.x, k, 14, dt));
+    return Math.abs(object.position.z - z) < 0.2 && Math.abs(object.scale.x - k) < 0.001;
+  };
 
   return {
     scene,
@@ -390,7 +506,9 @@ export function buildStage(
         screenMat.map = texture;
         screenMat.color.set("#ffffff");
         glow.intensity = 700_000;
+        screenOn = true;
       } else {
+        screenOn = false;
         screenMat.map?.dispose();
         screenMat.map = null;
         screenMat.color.set("#0a0f0d");
@@ -400,14 +518,37 @@ export function buildStage(
     },
     highlight(object) {
       if (lifted === object) return;
-      if (lifted) {
-        lifted.position.z = (lifted.userData["rest"] as number | undefined) ?? lifted.position.z;
-        lifted.scale.setScalar(1);
+      if (lifted) moving.add(lifted);
+      lifted = object && typeof object.userData["rest"] === "number" ? object : null;
+      if (lifted) moving.add(lifted);
+    },
+    tick(t, dt) {
+      for (const object of moving) if (settle(object, dt)) moving.delete(object);
+      if (still) return;
+
+      for (const { group, phase } of pendants) {
+        group.rotation.z = Math.sin(t * 0.55 + phase) * 0.035;
+        group.rotation.x = Math.cos(t * 0.41 + phase * 1.3) * 0.028;
       }
-      lifted = object;
-      if (object && typeof object.userData["rest"] === "number") {
-        object.position.z = (object.userData["rest"] as number) + 46;
-        object.scale.setScalar(1.06);
+
+      const at = motePositions.array as Float32Array;
+      for (let i = 0; i < MOTES; i++) {
+        const phase = drift[i * 3]!;
+        const speed = drift[i * 3 + 1]!;
+        const reach = drift[i * 3 + 2]!;
+        const a = t * speed + phase;
+        at[i * 3] = home[i * 3]! + Math.sin(a) * reach;
+        at[i * 3 + 1] = home[i * 3 + 1]! + Math.sin(a * 0.7 + phase) * reach * 0.6;
+        at[i * 3 + 2] = home[i * 3 + 2]! + Math.cos(a * 0.9) * reach;
+      }
+      motePositions.needsUpdate = true;
+
+      capsuleMat.emissiveIntensity = 0.03 + 0.05 * (0.5 + 0.5 * Math.sin(t * 1.1));
+
+      // a picture changing on a screen changes the light it throws
+      if (screenOn) {
+        const shimmer = Math.sin(t * 7.3) * 0.5 + Math.sin(t * 13.1 + 1.7) * 0.3 + Math.sin(t * 2.1) * 0.2;
+        glow.intensity = 700_000 * (0.86 + 0.14 * shimmer);
       }
     },
     resize(width, height, dpr) {

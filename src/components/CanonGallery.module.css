@@ -118,3 +118,26 @@
     gap: 42px 20px;
   }
 }
+
+/* ---------- motion ----------
+   Tiles come up as they come into view where the browser can tie an
+   animation to scrolling, and in a short stagger on load where it cannot.
+   Neither runs for anyone who has asked for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .tile {
+    animation: tileIn 0.8s calc(var(--i, 0) * 70ms) var(--ease) both;
+  }
+  @supports (animation-timeline: view()) {
+    .tile {
+      animation: tileIn linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 70%;
+    }
+  }
+}
+@keyframes tileIn {
+  from {
+    opacity: 0;
+    transform: translateY(34px) scale(0.97);
+  }
+}

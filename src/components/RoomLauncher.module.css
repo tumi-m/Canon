@@ -9,6 +9,27 @@
   color: var(--paper);
   transition: all 0.25s var(--ease);
   text-transform: lowercase;
+  position: relative;
+  overflow: hidden;
+}
+/* light from under a door: a warm sweep across the button when you reach for it */
+.button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--paper) 38%, transparent) 50%,
+    transparent 70%
+  );
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+.button:hover::after,
+.button:focus-visible::after {
+  transition: transform 0.8s var(--ease);
+  transform: translateX(120%);
 }
 .button:hover {
   background: var(--red);
@@ -57,4 +78,14 @@
   color: var(--ink-soft);
   margin-top: 12px;
   max-width: 46ch;
+}
+
+.blurb {
+  animation: blurbIn 0.5s var(--ease) both;
+}
+@keyframes blurbIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }

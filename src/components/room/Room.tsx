@@ -43,6 +43,8 @@ type Live = {
   last: number;
   frame: number;
   stride: number;
+  /** 1 → 0 over the walk in through the door */
+  intro: number;
 };
 
 /** wasd walks. */
@@ -115,6 +117,11 @@ function RoomScene({
   const [theatre, setTheatre] = useState(false);
   /** the room is drawn on the gpu; say which of the three states it is in */
   const [gl, setGl] = useState<"loading" | "ready" | "failed">("loading");
+  /** the curtain stays down while the room builds, then lifts rather than vanishing */
+  const [curtainUp, setCurtainUp] = useState(false);
+  useEffect(() => {
+    if (gl === "loading") setCurtainUp(false);
+  }, [gl]);
 
   const reduced = useRef(false);
   const paused = useRef(false);
@@ -122,7 +129,7 @@ function RoomScene({
   const live = useRef<Live>({
     x: 0, z: G.spawnZ, yaw: 0, pitch: 0, vx: 0, vz: 0, bob: 0,
     keys: new Set(), look: { x: 0, y: 0 }, stick: { x: 0, y: 0 },
-    aim: null, raf: 0, last: 0, frame: 0, stride: 0,
+    aim: null, raf: 0, last: 0, frame: 0, stride: 0, intro: 1,
   });
 
   /* ---------- the television ---------- */
@@ -201,7 +208,7 @@ function RoomScene({
     const mount = (): (() => void) => {
       let stage: Stage;
       try {
-        stage = buildStage(canvas, world, place, entries, providerFor);
+        stage = buildStage(canvas, world, place, entries, providerFor, reduced.current);
       } catch {
         // no webgl, or the context was refused. the list is always there.
         setGl("failed");
@@ -308,12 +315,19 @@ function RoomScene({
           sound.current?.step();
         }
 
+        /* The way in: you arrive a few steps back, a little taller than you
+           will stand once you are in, and settle onto your feet as the
+           curtain lifts. Cubic ease-out, so it slows as it lands. */
+        if (reduced.current) L.intro = 0;
+        else if (L.intro > 0) L.intro = Math.max(0, L.intro - dt / 1.9);
+        const arriving = L.intro * L.intro * L.intro;
+
         // world.ts measures +y down; the scene is built +y up (see scene.ts)
         const bob = reduced.current ? 0 : -Math.sin(L.bob) * 6;
-        stage.camera.position.set(L.x, bob, L.z);
+        stage.camera.position.set(L.x, bob + arriving * 36, L.z + arriving * 210);
         stage.camera.rotation.set(0, 0, 0);
         stage.camera.rotateY((L.yaw * Math.PI) / -180);
-        stage.camera.rotateX((L.pitch * Math.PI) / 180);
+        stage.camera.rotateX(((L.pitch - arriving * 5) * Math.PI) / 180);
         if (!reduced.current) stage.camera.rotateZ((Math.sin(L.bob * 0.5) * 0.45 * Math.PI) / 180);
       };
 
@@ -364,6 +378,7 @@ function RoomScene({
           setAt(L.aim?.shelf ?? (close ? near.label : null));
         }
 
+        stage.tick(t / 1000, dt);
         stage.renderer.render(stage.scene, stage.camera);
         L.raf = requestAnimationFrame(loop);
       };
@@ -632,18 +647,28 @@ function RoomScene({
             <button onClick={onBrowseList}>☰ read it as a list instead</button>
           </div>
         ) : null}
-        {gl === "loading" ? (
-          <div className={styles.entering} role="status">
-            letting you into {displayName}&apos;s {place.noun}…
+        {curtainUp || gl === "failed" ? null : (
+          <div
+            className={`${styles.curtain} ${gl === "ready" ? styles.curtainLift : ""}`}
+            role={gl === "loading" ? "status" : undefined}
+            aria-hidden={gl === "ready" ? true : undefined}
+            onAnimationEnd={(e) => {
+              if (e.target === e.currentTarget && gl === "ready") setCurtainUp(true);
+            }}
+          >
+            <span className={styles.curtainName}>
+              {displayName}&apos;s {place.noun}
+            </span>
+            <span className={styles.curtainNote}>letting you in…</span>
           </div>
-        ) : null}
+        )}
       </div>
 
       <div className={styles.dust} />
       <div className={styles.vign} />
       <div className={`${styles.retic} ${aimLabel ? styles.reticHot : ""}`} />
       {aimLabel ? (
-        <div className={styles.aimLabel}>
+        <div key={aimLabel.title} className={styles.aimLabel}>
           {aimLabel.title}
           <small>{aimLabel.hint}</small>
         </div>

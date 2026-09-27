@@ -213,7 +213,9 @@
   margin: -9px 0 0 -9px;
   pointer-events: none;
   opacity: 0.7;
-  transition: opacity 0.2s;
+  transition:
+    opacity 0.2s,
+    transform 0.28s var(--ease);
 }
 .retic::before,
 .retic::after {
@@ -262,6 +264,15 @@
   border: 1px solid rgba(240, 226, 203, 0.2);
   pointer-events: none;
   max-width: min(44ch, 86vw);
+  /* keyed on the title, so it rises in afresh each time the reticle moves on */
+  animation: aimIn 0.32s var(--ease) both;
+}
+@keyframes aimIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+    letter-spacing: 0.16em;
+  }
 }
 .aimLabel small {
   display: block;
@@ -292,10 +303,15 @@
   gap: 7px;
   padding: 3px 0;
   opacity: 0.5;
+  transition:
+    opacity 0.3s,
+    color 0.3s,
+    transform 0.35s var(--ease);
 }
 .shelfRow.shelfOn {
   opacity: 1;
   color: #ffd9a8;
+  transform: translateX(-4px);
 }
 .shelfDot {
   width: 6px;
@@ -529,16 +545,136 @@
   padding: 11px 10px;
 }
 
-/* between the click and the first frame: say something is happening */
-.entering {
+
+/* ---------- motion ----------
+   All of it is decoration on top of something that already works, and all of
+   it is switched off by the reduced-motion rule in globals.css. */
+
+/* the curtain: down while the room builds, lifted once it can be seen */
+.curtain {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  color: #f0e2cb;
+  gap: 14px;
   background: var(--room-void);
+  color: #f0e2cb;
+  pointer-events: none;
+}
+.curtainName {
+  font-family: var(--serif);
+  font-size: clamp(1.6rem, 4vw, 2.8rem);
+  letter-spacing: -0.01em;
+  animation: curtainName 1.2s var(--ease) both;
+}
+.curtainNote {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  opacity: 0.6;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+.curtainLift {
+  animation: curtainLift 1.15s var(--ease) forwards;
+}
+.curtainLift .curtainName {
+  animation: curtainNameOut 0.9s var(--ease) forwards;
+}
+@keyframes curtainName {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(6px);
+  }
+}
+@keyframes curtainNameOut {
+  to {
+    opacity: 0;
+    transform: translateY(-18px) scale(1.04);
+    filter: blur(4px);
+  }
+}
+@keyframes curtainLift {
+  0% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+  }
+}
+@keyframes breathe {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* taking a case off the shelf: it comes up into your hands, not onto a page */
+.inspect {
+  animation: dim 0.35s ease-out both;
+}
+.inspect .flip {
+  animation: pickUp 0.62s var(--ease) both;
+}
+.inspect .tools {
+  animation: rise 0.5s 0.22s var(--ease) both;
+}
+@keyframes dim {
+  from {
+    background: rgba(12, 8, 5, 0);
+    backdrop-filter: blur(0);
+  }
+}
+@keyframes pickUp {
+  from {
+    opacity: 0;
+    transform: translateY(26vh) scale(0.42) rotateX(46deg) rotateZ(-4deg);
+  }
+  60% {
+    opacity: 1;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* the big screen switches on like a tube: a line, then the picture */
+.theatre {
+  animation: dim 0.3s ease-out both;
+}
+.theatreScreen {
+  animation: tubeOn 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.theatreTitle,
+.theatreBar {
+  animation: rise 0.5s 0.4s var(--ease) both;
+}
+@keyframes tubeOn {
+  0% {
+    transform: scale(0.55, 0.006);
+    filter: brightness(5) saturate(0);
+    opacity: 0.2;
+  }
+  35% {
+    transform: scale(1, 0.006);
+    filter: brightness(4) saturate(0);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+    filter: none;
+  }
+}
+
+/* the hud arrives after the room does */
+.hud,
+.shelfList {
+  animation: rise 0.7s 0.5s var(--ease) both;
 }
