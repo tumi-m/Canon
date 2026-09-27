@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Entry } from "@/lib/schema";
-import { aimAt, buildWorld, collide, G, nearestUnit, project, sectionsFor } from "./world";
+import { buildWorld, collide, G, nearestUnit, sectionsFor, SLEEVE } from "./world";
 import { getCanon } from "@/lib/canon";
 
 const entries = getCanon("tumelo")!.entries;
@@ -52,8 +52,7 @@ describe("buildWorld", () => {
     // drawn at, or the reticle points somewhere the sleeve is not
     for (const unit of world.units) {
       const theta = (unit.rot * Math.PI) / 180;
-      const widths: Record<string, number> = { shelf: 184, crate: 208 };
-      const w = widths[unit.furniture]!;
+      const w = SLEEVE[unit.furniture].w;
       for (const s of unit.sleeves) {
         const lx = s.left + w / 2 - unit.width / 2;
         expect(s.x).toBeCloseTo(unit.fx + lx * Math.cos(theta), 6);
@@ -73,10 +72,11 @@ describe("buildWorld", () => {
     }
   });
 
-  it("keeps the whole room in front of the eye plane from anywhere you can stand", () => {
-    // anything straddling the perspective distance smears across the view
-    expect(G.frontZ - world.bounds.zMax).toBeLessThan(G.perspective);
+  it("keeps every walkable spot inside the shell", () => {
     expect(world.bounds.zMin).toBeGreaterThan(G.backZ);
+    expect(world.bounds.zMax).toBeLessThan(G.frontZ);
+    expect(world.bounds.xMin).toBeGreaterThan(-G.roomX);
+    expect(world.bounds.xMax).toBeLessThan(G.roomX);
   });
 });
 
@@ -101,48 +101,6 @@ describe("collide", () => {
   });
 });
 
-describe("project", () => {
-  it("puts what is straight ahead at positive depth, zero off-axis", () => {
-    const p = project({ x: 0, y: 0, z: -500 }, { x: 0, z: 0, yaw: 0, pitch: 0 });
-    expect(p.depth).toBeCloseTo(500);
-    expect(p.lateral).toBeCloseTo(0);
-  });
-
-  it("reports what is behind you as negative depth", () => {
-    expect(project({ x: 0, y: 0, z: 500 }, { x: 0, z: 0, yaw: 0, pitch: 0 }).depth).toBeCloseTo(
-      -500,
-    );
-  });
-
-  it("turning right moves what was ahead to your left", () => {
-    expect(project({ x: 0, y: 0, z: -500 }, { x: 0, z: 0, yaw: 90, pitch: 0 }).lateral).toBeLessThan(
-      0,
-    );
-  });
-});
-
-describe("aimAt", () => {
-  const near = { x: 0, y: 0, z: -300 };
-  const far = { x: 0, y: 0, z: -900 };
-  const cam = { x: 0, z: 0, yaw: 0, pitch: 0 };
-
-  it("picks the nearest thing under the reticle", () => {
-    expect(aimAt([far, near], cam)).toBe(near);
-  });
-
-  it("ignores what is off to the side, behind, too close or too far", () => {
-    expect(aimAt([{ x: 700, y: 0, z: -300 }], cam)).toBeNull();
-    expect(aimAt([{ x: 0, y: 0, z: 300 }], cam)).toBeNull();
-    expect(aimAt([{ x: 0, y: 0, z: -10 }], cam)).toBeNull();
-    expect(aimAt([{ x: 0, y: 0, z: -9000 }], cam)).toBeNull();
-  });
-
-  it("follows the pitch of the camera — down to the crate, up to the top shelf", () => {
-    const low = { x: 0, y: 260, z: -400 };
-    expect(aimAt([low], cam)).toBeNull();
-    expect(aimAt([low], { ...cam, pitch: -34 })).toBe(low);
-  });
-});
 
 describe("nearestUnit", () => {
   it("names the shelf you are standing at", () => {
@@ -174,25 +132,3 @@ describe("venues", () => {
   });
 });
 
-describe("aim hysteresis", () => {
-  const cam = { x: 0, z: 0, yaw: 0, pitch: 0 };
-  const a = { x: -80, y: 0, z: -400 };
-  const b = { x: 80, y: 0, z: -400 };
-
-  it("keeps hold of what you are already pointing at", () => {
-    // both are equally in view; whichever is held should stay held, rather
-    // than the two trading the highlight every few frames as you drift
-    expect(aimAt([a, b], cam, { holding: a })).toBe(a);
-    expect(aimAt([a, b], cam, { holding: b })).toBe(b);
-  });
-
-  it("still gives way to something clearly nearer", () => {
-    const near = { x: 0, y: 0, z: -160 };
-    expect(aimAt([near, b], cam, { holding: b })).toBe(near);
-  });
-
-  it("lets go once the held target leaves the widened cone", () => {
-    const far = { x: 900, y: 0, z: -300 };
-    expect(aimAt([far], cam, { holding: far })).toBeNull();
-  });
-});

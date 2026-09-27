@@ -12,23 +12,21 @@ import type { Entry } from "@/lib/schema";
  * carries the inverse camera transform, so everything below is authored in
  * plain world coordinates.
  *
- * Positions are computed here rather than measured off the DOM: reading
- * offsetLeft/offsetTop silently returns zero inside a display:none subtree,
- * which collapses every sleeve onto its shelf's centre.
+ * Positions are computed here and handed to the renderer, which builds meshes
+ * from them. Keeping the model separate from the drawing is what let the whole
+ * room move from CSS 3D to WebGL without touching a line of the layout, the
+ * collision boxes, or their tests.
  */
 
 export const G = {
   floorY: 290,
   ceilY: -300,
-  /** the room is generous: css has a fixed eye plane, and walls you can press
-      your nose against smear across the view */
   roomX: 1050,
   backZ: -1560,
   frontZ: 760,
   spawnZ: 520,
   speed: 430,
   radius: 95,
-  perspective: 700,
 } as const;
 
 /**
@@ -41,14 +39,26 @@ export const G = {
  */
 export type Furniture = "shelf" | "crate";
 
-const SLEEVE: Record<Furniture, { w: number; h: number; cols: number }> = {
-  // a bookcase of standing cases
-  shelf: { w: 184, h: 214, cols: 5 },
-  // a floor crate you flip through: wider, shorter, fewer across
-  crate: { w: 208, h: 188, cols: 4 },
+/**
+ * The slot each sleeve occupies, centre to centre once GAP is added.
+ *
+ * These are the *pitch* of the grid, not the size of the object drawn in it:
+ * the renderer fills the whole slot including its gap, because cases on a
+ * shelf touch. They used to float with thirty units of air around them, which
+ * read as a display stand rather than a collection — and left a void wide
+ * enough to stand in front of and see nothing at all.
+ *
+ * Exported so the renderer and the layout test read the same numbers instead
+ * of each carrying its own copy.
+ */
+export const SLEEVE: Record<Furniture, { w: number; h: number; cols: number }> = {
+  // a bookcase of standing cases: pitch 160 × 214, near enough a poster
+  shelf: { w: 148, h: 214, cols: 5 },
+  // a floor crate you flip through: square, the way a record sleeve is
+  crate: { w: 168, h: 188, cols: 4 },
 };
 
-const GAP = 12;
+export const GAP = 12;
 const PAD = 16;
 const BORDER = 8;
 
@@ -164,7 +174,9 @@ function makeUnit(
   if (count === 0) return null;
 
   const spec = SLEEVE[furniture];
-  const cols = Math.min(spec.cols, Math.max(2, count > spec.cols ? Math.ceil(count / 2) : count));
+  // a shelf holding one thing is one slot wide; it used to be padded out to
+  // two, which built a half-empty crate around a single record
+  const cols = Math.min(spec.cols, count > spec.cols ? Math.ceil(count / 2) : count);
   const rows = Math.ceil(count / cols);
   const width = cols * spec.w + (cols - 1) * GAP + 2 * (PAD + BORDER);
   const height = rows * spec.h + (rows - 1) * GAP + 2 * (PAD + BORDER);
@@ -225,14 +237,26 @@ export function buildWorld(
     { furniture: "shelf" as const, x: 0, y: -60, z: G.backZ + 80, rot: 0, tilt: 0 },
     { furniture: "shelf" as const, x: -(G.roomX - 30), y: -60, z: -760, rot: 90, tilt: 0 },
     { furniture: "shelf" as const, x: G.roomX - 30, y: -60, z: -760, rot: -90, tilt: 0 },
-    { furniture: "crate" as const, x: -400, y: 96, z: -180, rot: 20, tilt: -34 },
-    { furniture: "crate" as const, x: 430, y: 96, z: -220, rot: -24, tilt: -34 },
+    { furniture: "crate" as const, x: -430, y: 150, z: -120, rot: 20, tilt: -16 },
+    { furniture: "crate" as const, x: 450, y: 150, z: -170, rot: -24, tilt: -16 },
   ];
 
   sections.forEach((section, i) => {
     const spot = spots[i % spots.length]!;
     const unit = makeUnit(`s${i}`, section.name, spot.furniture, section.entries, spot);
-    if (unit) units.push(unit);
+    if (!unit) return;
+    if (unit.furniture === "crate") {
+      // a crate stands on the floor. its height is not known until its stock is
+      // laid out, so it is only here that we know where its feet go.
+      const seated = { ...unit, fy: G.floorY - unit.height / 2 };
+      const drop = seated.fy - unit.fy;
+      units.push({
+        ...seated,
+        sleeves: unit.sleeves.map((sleeve) => ({ ...sleeve, y: sleeve.y + drop })),
+      });
+      return;
+    }
+    units.push(unit);
   });
 
   // the only things you can walk into are the things holding the canon
@@ -249,9 +273,11 @@ export function buildWorld(
     });
   }
 
+  /* hung high and away from where you come in: a pendant at eye level, a
+     stride from the door, is a lamp in your face rather than a lit room */
   const lamps: Lamp[] = [
-    { key: "pendant-a", x: -260, y: -196, z: -560 },
-    { key: "pendant-b", x: 300, y: -196, z: 60 },
+    { key: "pendant-a", x: -300, y: -232, z: -820 },
+    { key: "pendant-b", x: 340, y: -232, z: -260 },
   ];
 
   return {
@@ -296,58 +322,6 @@ export function collide(
 }
 
 export type Camera = { x: number; z: number; yaw: number; pitch: number };
-
-export function project(target: Aim, cam: Camera): { depth: number; lateral: number } {
-  const yaw = (cam.yaw * Math.PI) / 180;
-  const s = Math.sin(yaw);
-  const c = Math.cos(yaw);
-  const dx = target.x - cam.x;
-  const dz = target.z - cam.z;
-  return { depth: dx * s - dz * c, lateral: dx * c + dz * s };
-}
-
-/**
- * What is under the reticle, or null when you are looking at the rug.
- *
- * `holding` is what the reticle was on last frame. Two objects at nearly the
- * same angle would otherwise trade the highlight back and forth every few
- * frames as you drift, and each swap restarts a transition — which is what
- * flickering looks like. Whatever you are already pointing at gets a wider
- * cone, so it has to be clearly lost before anything takes it.
- */
-export function aimAt<T extends Aim>(
-  targets: readonly T[],
-  cam: Camera,
-  opts: {
-    lateral?: number;
-    vertical?: number;
-    near?: number;
-    far?: number;
-    holding?: T | null;
-  } = {},
-): T | null {
-  const { lateral = 120, vertical = 160, near = 110, far = 1600, holding = null } = opts;
-  const tp = Math.tan((cam.pitch * Math.PI) / 180);
-  /** the cone is 45% wider for the thing already held */
-  const STICK = 1.45;
-
-  let best: T | null = null;
-  let bestDepth = Infinity;
-  for (const target of targets) {
-    const held = holding !== null && target === holding;
-    const slack = held ? STICK : 1;
-    const { depth, lateral: off } = project(target, cam);
-    if (depth < near || depth > far * slack) continue;
-    if (Math.abs(off) > lateral * slack) continue;
-    if (Math.abs(target.y - -depth * tp) > vertical * slack) continue;
-    // a held target only loses to something meaningfully nearer
-    const score = held ? depth * 0.7 : depth;
-    if (score >= bestDepth) continue;
-    bestDepth = score;
-    best = target;
-  }
-  return best;
-}
 
 /** Which shelf you are standing closest to — what the room calls itself. */
 export function nearestUnit(units: readonly Unit[], cam: Camera): Unit | undefined {

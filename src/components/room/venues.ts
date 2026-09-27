@@ -14,6 +14,24 @@
 
 export type VenueId = "den" | "library" | "vault" | "seedbank" | "cinema";
 
+/**
+ * The colours the 3D room is built from. CSS tokens dress the HUD; these dress
+ * the scene, and they are plain strings so the texture painter can hand them
+ * straight to a 2D context.
+ */
+export type Palette = {
+  readonly floor: string;
+  readonly wall: string;
+  readonly ceiling: string;
+  readonly timber: string;
+  readonly rugA: string;
+  readonly rugB: string;
+  /** the colour of the light, and of the glow around a lamp */
+  readonly light: string;
+  /** how hard the room is lit overall, 0..1 */
+  readonly ambient: number;
+};
+
 export type Venue = {
   readonly id: VenueId;
   /** what the picker calls it */
@@ -24,6 +42,7 @@ export type Venue = {
   readonly shelves: readonly [string, string, string, string];
   /** what the walkable space itself is called, for the HUD */
   readonly noun: string;
+  readonly palette: Palette;
 };
 
 export const VENUES: readonly Venue[] = [
@@ -33,6 +52,10 @@ export const VENUES: readonly Venue[] = [
     blurb: "floorboards, a rug, lamps. the room you actually watched them in.",
     shelves: ["the ones that changed me", "played to death", "the good shelf", "odds and ends"],
     noun: "room",
+    palette: {
+      floor: "#5c3f27", wall: "#4a3627", ceiling: "#1b1512", timber: "#402d1c",
+      rugA: "#6d3326", rugB: "#7a3a2b", light: "#ffd9a0", ambient: 0.34,
+    },
   },
   {
     id: "library",
@@ -40,6 +63,10 @@ export const VENUES: readonly Venue[] = [
     blurb: "oak, stone and green shade. for a canon you expect to be read later.",
     shelves: ["the canon", "annotated", "the collection", "marginalia"],
     noun: "library",
+    palette: {
+      floor: "#3f2d1d", wall: "#5b5347", ceiling: "#181511", timber: "#2f2018",
+      rugA: "#26422f", rugB: "#2d4c39", light: "#ffd79a", ambient: 0.26,
+    },
   },
   {
     id: "vault",
@@ -47,6 +74,10 @@ export const VENUES: readonly Venue[] = [
     blurb: "steel and concrete. nothing leaves, nothing fades, nobody wanders in.",
     shelves: ["sealed", "held", "deposited", "loose"],
     noun: "vault",
+    palette: {
+      floor: "#3a3e43", wall: "#4c5257", ceiling: "#181c1f", timber: "#41474d",
+      rugA: "#2c3136", rugB: "#33383d", light: "#cfe4ff", ambient: 0.42,
+    },
   },
   {
     id: "seedbank",
@@ -54,6 +85,10 @@ export const VENUES: readonly Venue[] = [
     blurb: "cold storage, cut into rock. kept for whoever needs it in a hundred years.",
     shelves: ["the seed stock", "duplicated", "catalogued", "samples"],
     noun: "bank",
+    palette: {
+      floor: "#455360", wall: "#6d8492", ceiling: "#1a242b", timber: "#4d606c",
+      rugA: "#35454f", rugB: "#3c4e59", light: "#e2f4ff", ambient: 0.46,
+    },
   },
   {
     id: "cinema",
@@ -61,6 +96,10 @@ export const VENUES: readonly Venue[] = [
     blurb: "one screen in the dark. everything else gets out of the way.",
     shelves: ["the programme", "held over", "the back catalogue", "shorts"],
     noun: "cinema",
+    palette: {
+      floor: "#2c1518", wall: "#34191b", ceiling: "#0f0809", timber: "#2a1315",
+      rugA: "#5a1720", rugB: "#661a25", light: "#ffb894", ambient: 0.18,
+    },
   },
 ];
 

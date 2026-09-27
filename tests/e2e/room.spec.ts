@@ -1,28 +1,70 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-const openRoom = async (page: import("@playwright/test").Page) => {
+const openRoom = async (page: Page) => {
   await page.goto("/tumelo");
   await page.getByRole("button", { name: "step into the room" }).click();
   await expect(page.getByRole("button", { name: "let yourself out" })).toBeVisible();
+  // the scene is a canvas now; wait for it to have a drawing buffer
+  await expect
+    .poll(() => page.evaluate(() => (document.querySelector("canvas")?.width ?? 0) > 0))
+    .toBe(true);
+};
+
+/** Walk up to the shelf you come in facing, and read what is in front of you. */
+const walkUntilAimed = async (page: Page) => {
+  await page.keyboard.down("w");
+  await expect
+    .poll(() => page.locator("[class*=aimLabel]").count(), { timeout: 20_000 })
+    .toBeGreaterThan(0);
+  await page.keyboard.up("w");
 };
 
 test.describe("the room", () => {
-  test("opens, shelves the canon, and walks", async ({ page }) => {
+  test("draws a webgl scene rather than a pile of dom", async ({ page }) => {
     await openRoom(page);
-    await expect(page.locator("[class*=sleeve]").first()).toBeVisible();
+    expect(
+      await page.evaluate(() => {
+        const canvas = document.querySelector("canvas");
+        return !!(canvas?.getContext("webgl2") || canvas?.getContext("webgl"));
+      }),
+    ).toBe(true);
+    // the old renderer built a div per sleeve; the new one builds none
+    expect(await page.locator("[data-canon-room] [class*=sleeve]").count()).toBe(0);
+  });
 
-    const depth = () =>
-      page.evaluate(() => {
-        const w = document.querySelector("[class*=world]") as HTMLElement;
-        return parseFloat(w.style.getPropertyValue("--cz"));
-      });
+  test("walks, and the reticle finds what you walk up to", async ({ page }) => {
+    await openRoom(page);
+    await expect(page.locator("[class*=aimLabel]")).toHaveCount(0);
+    await walkUntilAimed(page);
+    await expect(page.locator("[class*=aimLabel]")).toBeVisible();
+  });
 
-    // poll rather than wait a fixed slice: headless software rendering runs at
-    // a few fps under parallel workers, so any timeout is either flaky or slow
-    const before = await depth();
-    await page.keyboard.down("w");
-    await expect.poll(depth, { timeout: 10_000 }).toBeLessThan(before);
-    await page.keyboard.up("w");
+  test("can be looked around with the keyboard alone", async ({ page }) => {
+    // there is no pointer on a keyboard, and a reticle you cannot aim is a
+    // room you cannot use: the arrows have to turn your head
+    await openRoom(page);
+    await walkUntilAimed(page);
+    const facing = await page.locator("[class*=aimLabel]").innerText();
+
+    await page.keyboard.down("ArrowRight");
+    await expect
+      .poll(async () => {
+        const label = page.locator("[class*=aimLabel]");
+        return (await label.count()) === 0 ? "" : await label.innerText();
+      })
+      .not.toBe(facing);
+    await page.keyboard.up("ArrowRight");
+  });
+
+  test("takes something off the shelf and shows its why", async ({ page }) => {
+    await openRoom(page);
+    await walkUntilAimed(page);
+    await page.keyboard.press("e");
+    const card = page.getByRole("dialog");
+    await expect(card).toBeVisible();
+    await expect(card.getByText(/via JustWatch/)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(card).toHaveCount(0);
   });
 
   test("keeps keyboard focus inside the room, and gives it back on leaving", async ({ page }) => {
@@ -52,29 +94,15 @@ test.describe("the room", () => {
     await expect(page.getByText("same shelves, read as a list.")).toBeVisible();
     await expect(page.getByText("making of gta 1, 1996").first()).toBeVisible();
   });
-
-  test("opens a case and shows its why and where to watch", async ({ page }) => {
-    await openRoom(page);
-    await page.locator("button[class*=sleeve]").first().click();
-    const card = page.getByRole("dialog");
-    await expect(card).toBeVisible();
-    await expect(card.getByText(/via JustWatch/)).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(card).toHaveCount(0);
-  });
 });
 
 test.describe("watching and leaving", () => {
   test("the screen fills the view, and esc unwinds one layer at a time", async ({ page }) => {
-    await page.goto("/tumelo");
-    await page.getByRole("button", { name: "step into the room" }).click();
-    await expect(page.getByRole("button", { name: "let yourself out" })).toBeVisible();
-
+    await openRoom(page);
     await page.getByRole("button", { name: "watch", exact: false }).first().click();
     const theatre = page.getByRole("dialog", { name: /watching/ });
     await expect(theatre).toBeVisible();
     const frame = theatre.locator("iframe");
-    await expect(frame).toBeVisible();
     const box = await frame.boundingBox();
     const view = page.viewportSize()!;
     // "much bigger" is the requirement: the screen has to dominate the viewport
@@ -89,11 +117,8 @@ test.describe("watching and leaving", () => {
   });
 
   test("you can change building without leaving", async ({ page }) => {
-    await page.goto("/tumelo");
-    await page.getByRole("button", { name: "step into the room" }).click();
-    const room = page.locator("[class*=room]").first();
-    await expect(room).toHaveAttribute("data-venue", "den");
-
+    await openRoom(page);
+    await expect(page.locator("[data-venue=den]")).toHaveCount(1);
     await page.getByLabel("where you keep it").selectOption("vault");
     await expect(page.locator("[data-venue=vault]")).toHaveCount(1);
     // the shelves are renamed in the vocabulary of the building
@@ -101,8 +126,7 @@ test.describe("watching and leaving", () => {
   });
 
   test("leaving is always one obvious control away", async ({ page }) => {
-    await page.goto("/tumelo");
-    await page.getByRole("button", { name: "step into the room" }).click();
+    await openRoom(page);
     const exit = page.getByRole("button", { name: "let yourself out" });
     await expect(exit).toBeFocused();
     await expect(exit).toContainText("ESC");
