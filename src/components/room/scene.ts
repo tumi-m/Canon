@@ -1,9 +1,17 @@
 import * as THREE from "three";
 import type { Entry } from "@/lib/schema";
-import { thumbnailForEntry } from "@/lib/youtube";
+import { channelsFrom, thumbnailForEntry } from "@/lib/youtube";
 import { G, GAP, hash, SLEEVE, type Unit, type World } from "./world";
 import type { Venue } from "./venues";
-import { coverTexture, disposeTextures, plasterTexture, weaveTexture, woodTexture } from "./textures";
+import {
+  coverTexture,
+  disposeTextures,
+  plaqueTexture,
+  plasterTexture,
+  screenTexture,
+  weaveTexture,
+  woodTexture,
+} from "./textures";
 
 /**
  * The room, on the GPU.
@@ -40,14 +48,24 @@ export type Hit = {
   readonly shelf: string | null;
 };
 
+/** The set is off, or on a channel — with its artwork once that arrives. */
+export type Screen =
+  | { readonly on: false }
+  | {
+      readonly on: true;
+      readonly channel: string;
+      readonly title: string;
+      readonly image: HTMLImageElement | null;
+    };
+
 export type Stage = {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   readonly renderer: THREE.WebGLRenderer;
   /** everything the reticle can land on */
   readonly targets: THREE.Object3D[];
-  /** put the artwork for the playing channel on the screen, or clear it */
-  setScreen(image: HTMLImageElement | null): void;
+  /** what the set in the room is showing: nothing, or a channel */
+  setScreen(state: Screen): void;
   /** lift whatever the reticle is on, and drop whatever it left */
   highlight(object: THREE.Object3D | null): void;
   resize(width: number, height: number, dpr: number): void;
@@ -396,19 +414,47 @@ export function buildStage(
     }
   }
 
-  /* ---------- the set ---------- */
-  const screenMat = keep(new THREE.MeshBasicMaterial({ color: "#0a0f0d" }));
-  const tv = new THREE.Group();
-  const bezel = new THREE.Mesh(
-    new THREE.BoxGeometry(1180, 720, 90),
-    keep(new THREE.MeshStandardMaterial({ color: "#211c19", roughness: 0.5 })),
+  /* ---------- the set ----------
+     It was 720 units tall in a room 590 high: it went through the floor and
+     the ceiling, and all anyone saw was a slab of black. It is a set on a
+     sideboard now, at the height you would sit and watch it. */
+  const channelCount = channelsFrom(entries).length;
+  const standby = keep(
+    screenTexture(
+      channelCount
+        ? [
+            { text: "the set", size: 40, colour: "#7fa892", font: "serif" },
+            { text: `${channelCount} channels of ${entries.length ? "this canon" : "nothing"}`, size: 22, colour: "#56705f", gap: 14 },
+            { text: "press T to watch", size: 22, colour: "#9fd4b8", gap: 26 },
+          ]
+        : [
+            { text: "no signal", size: 40, colour: "#56705f", font: "serif" },
+            { text: "nothing on this canon plays on a screen", size: 22, colour: "#3e5246", gap: 14 },
+          ],
+      false,
+    ),
   );
+  const screenMat = keep(new THREE.MeshBasicMaterial({ map: standby, toneMapped: false }));
+  const tv = new THREE.Group();
+  const cabinetMat = keep(new THREE.MeshStandardMaterial({ color: "#1c1714", roughness: 0.42, metalness: 0.1 }));
+  const bezel = new THREE.Mesh(new THREE.BoxGeometry(780, 460, 70), cabinetMat);
   bezel.castShadow = true;
   tv.add(bezel);
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(1080, 610), screenMat);
-  screen.position.z = 47;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(720, 405), screenMat);
+  screen.position.z = 36;
   tv.add(screen);
-  tv.position.set(1035, up(-40), -280);
+  // the standby light: the one sign a switched-off set is plugged in
+  const led = new THREE.Mesh(
+    new THREE.SphereGeometry(5, 10, 8),
+    keep(new THREE.MeshBasicMaterial({ color: "#ff3b2a", toneMapped: false })),
+  );
+  led.position.set(350, -214, 36);
+  tv.add(led);
+  // the sideboard is low; the screen's centre sits just above eye level
+  const sideboardH = 80;
+  const TV_Y = up(G.floorY) + sideboardH + 20 + 230;
+  const { set } = world;
+  tv.position.set(set.x + set.depth / 2 - 50, TV_Y, set.z);
   tv.rotation.y = -Math.PI / 2;
   tv.userData["hit"] = {
     kind: "tv", key: "__tv", entry: null, label: "the television", shelf: null,
@@ -416,26 +462,50 @@ export function buildStage(
   scene.add(tv);
   targets.push(tv);
 
+  // and what it stands on
+  const sideboard = new THREE.Mesh(new THREE.BoxGeometry(set.depth, sideboardH, set.length), timberMat);
+  sideboard.position.set(set.x, up(G.floorY) + sideboardH / 2, set.z);
+  sideboard.castShadow = true;
+  sideboard.receiveShadow = true;
+  scene.add(sideboard);
+  // a short neck from the sideboard's top to the bottom of the set
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(40, 20, 120), cabinetMat);
+  neck.position.set(set.x + set.depth / 2 - 60, up(G.floorY) + sideboardH + 10, set.z);
+  scene.add(neck);
+
   // the screen is its own light source, the way a television actually is
   const glow = new THREE.PointLight(new THREE.Color("#9fd4ff"), 0, 3000, 2);
-  glow.position.set(900, up(-40), -280);
+  glow.position.set(set.x - 160, TV_Y, set.z);
   scene.add(glow);
 
   /* ---------- the capsule ---------- */
-  const capsule = new THREE.Mesh(
-    new THREE.BoxGeometry(400, 500, 60),
-    keep(
-      new THREE.MeshStandardMaterial({
-        color: p.timber,
-        roughness: 0.45,
-        metalness: 0.25,
-        // it breathes, faintly: the one thing in the room that is waiting
-        emissive: new THREE.Color(p.light),
-        emissiveIntensity: 0.04,
-      }),
-    ),
+  /* A strongbox standing on the floor, its face a brass plate and a seal.
+     It used to be a pale slab hanging in the air and through the ceiling,
+     and nobody would have guessed it was anything at all. */
+  const capsuleSide = keep(
+    new THREE.MeshStandardMaterial({
+      map: woodTexture(p.timber, [1, 2]),
+      roughness: 0.45,
+      metalness: 0.2,
+      // it breathes, faintly: the one thing in the room that is waiting
+      emissive: new THREE.Color(p.light),
+      emissiveIntensity: 0.04,
+    }),
   );
-  capsule.position.set(-690, up(-70), world.hatchZ + 40);
+  const capsuleFace = keep(
+    new THREE.MeshStandardMaterial({
+      map: keep(plaqueTexture(p.timber)),
+      roughness: 0.35,
+      metalness: 0.3,
+      emissive: new THREE.Color(p.light),
+      emissiveIntensity: 0.04,
+    }),
+  );
+  const CAPSULE_H = 400;
+  const capsule = new THREE.Mesh(new THREE.BoxGeometry(320, CAPSULE_H, 140), [
+    capsuleSide, capsuleSide, capsuleSide, capsuleSide, capsuleFace, capsuleSide,
+  ]);
+  capsule.position.set(-690, up(G.floorY) + CAPSULE_H / 2, world.hatchZ + 90);
   capsule.rotation.y = (18 * Math.PI) / 180;
   capsule.castShadow = true;
   capsule.userData["hit"] = {
@@ -482,7 +552,7 @@ export function buildStage(
   /** cases still easing off or back onto their shelf */
   const moving = new Set<THREE.Object3D>();
   let screenOn = false;
-  const capsuleMat = capsule.material as THREE.MeshStandardMaterial;
+  const capsuleMats = [capsuleSide, capsuleFace];
 
   /** where a case wants to be: out and a touch larger if held, home if not */
   const settle = (object: THREE.Object3D, dt: number) => {
@@ -505,21 +575,27 @@ export function buildStage(
     camera,
     renderer,
     targets,
-    setScreen(image) {
-      if (image) {
-        const texture = new THREE.CanvasTexture(image);
-        texture.colorSpace = THREE.SRGBColorSpace;
-        screenMat.map?.dispose();
-        screenMat.map = texture;
-        screenMat.color.set("#ffffff");
-        glow.intensity = 700_000;
-        screenOn = true;
-      } else {
+    setScreen(state) {
+      if (screenMat.map !== standby) screenMat.map?.dispose();
+      if (!state.on) {
         screenOn = false;
-        screenMat.map?.dispose();
-        screenMat.map = null;
-        screenMat.color.set("#0a0f0d");
+        screenMat.map = standby;
         glow.intensity = 0;
+      } else {
+        screenOn = true;
+        // the artwork if it arrived; otherwise the channel, set in type — a
+        // deleted video or a blocked cdn should not leave a switched-on set dark
+        screenMat.map = state.image
+          ? new THREE.CanvasTexture(state.image)
+          : screenTexture(
+              [
+                { text: state.channel, size: 30, colour: "#39ffa0" },
+                { text: state.title, size: 44, colour: "#d8f3e4", gap: 18, font: "serif" },
+              ],
+              true,
+            );
+        screenMat.map.colorSpace = THREE.SRGBColorSpace;
+        glow.intensity = 700_000;
       }
       screenMat.needsUpdate = true;
     },
@@ -550,7 +626,8 @@ export function buildStage(
       }
       motePositions.needsUpdate = true;
 
-      capsuleMat.emissiveIntensity = 0.03 + 0.05 * (0.5 + 0.5 * Math.sin(t * 1.1));
+      const breath = 0.03 + 0.05 * (0.5 + 0.5 * Math.sin(t * 1.1));
+      for (const m of capsuleMats) m.emissiveIntensity = breath;
 
       // a picture changing on a screen changes the light it throws
       if (screenOn) {
@@ -566,6 +643,7 @@ export function buildStage(
     },
     dispose() {
       disposed = true;
+      if (screenMat.map !== standby) screenMat.map?.dispose();
       for (const image of loading) image.onload = null;
       for (const thing of disposables) thing.dispose();
       for (const material of coverMaterials) {

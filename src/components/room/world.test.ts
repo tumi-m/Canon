@@ -85,7 +85,8 @@ describe("collide", () => {
   const { boxes, bounds } = world;
 
   it("keeps you inside the room", () => {
-    expect(collide(9999, 0, boxes, bounds)[0]).toBe(bounds.xMax);
+    // near the door the right-hand wall is clear; further in, the set stands there
+    expect(collide(9999, 600, boxes, bounds)[0]).toBe(bounds.xMax);
     expect(collide(-9999, 0, boxes, bounds)[0]).toBe(bounds.xMin);
     expect(collide(0, 9999, boxes, bounds)[1]).toBe(bounds.zMax);
     // walking at the back wall stops you at the bookcase standing against it,
@@ -93,6 +94,23 @@ describe("collide", () => {
     const back = collide(0, -9999, boxes, bounds)[1];
     expect(back).toBeGreaterThanOrEqual(bounds.zMin);
     expect(back).toBeLessThan(0);
+  });
+
+  it("stops you at the set's sideboard before the wall behind it", () => {
+    const [x] = collide(9999, world.set.z, boxes, bounds);
+    expect(x).toBeLessThan(bounds.xMax);
+    expect(x).toBeLessThanOrEqual(world.set.x - world.set.depth / 2);
+  });
+
+  it("stands no piece of furniture inside another", () => {
+    // the set once stood straight through the shelf beside it
+    const overlap = (a: (typeof boxes)[number], b: (typeof boxes)[number]) =>
+      a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        expect(overlap(boxes[i]!, boxes[j]!), `box ${i} and box ${j} overlap`).toBe(false);
+      }
+    }
   });
 
   it("leaves somewhere to actually stand", () => {

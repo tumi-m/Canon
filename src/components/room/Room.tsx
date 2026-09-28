@@ -9,7 +9,7 @@ import { offersFor, regionName } from "@/lib/availability";
 import { channelLabel, channelsFrom, embedUrl, surf, thumbnailFor, thumbnailForEntry } from "@/lib/youtube";
 import { createRoomSound, STRIDE, type RoomSound } from "@/lib/roomSound";
 import { artFor, buildWorld, collide, G, nearestUnit } from "./world";
-import { buildStage, hitOf, type Hit, type Stage } from "./scene";
+import { buildStage, hitOf, type Hit, type Screen, type Stage } from "./scene";
 import { VENUES, venueById, type VenueId } from "./venues";
 import styles from "./Room.module.css";
 
@@ -106,7 +106,7 @@ function RoomScene({
   const nubRef = useRef<HTMLElement>(null);
   const stageRef = useRef<Stage | null>(null);
   /** what the set in the room is showing, kept so a rebuilt room shows it too */
-  const screenImage = useRef<HTMLImageElement | null>(null);
+  const screenState = useRef<Screen>({ on: false });
 
   const [at, setAt] = useState<string | null>(null);
   const [aimLabel, setAimLabel] = useState<{ title: string; hint: string } | null>(null);
@@ -223,7 +223,7 @@ function RoomScene({
         return () => {};
       }
       stageRef.current = stage;
-      stage.setScreen(screenImage.current);
+      stage.setScreen(screenState.current);
       // whatever the reticle was holding belonged to the room that just went
       L.aim = null;
       setAimLabel(null);
@@ -450,24 +450,29 @@ function RoomScene({
     exitRef.current?.focus({ preventScroll: true });
   }, []);
 
-  /* the set shows the artwork of whatever is playing */
+  /* The set shows what is playing: the channel in type at once, and its
+     artwork if and when that arrives. It used to wait for the artwork, so a
+     set switched on to a deleted video — or behind a blocked cdn — stayed
+     dark while the hud said it was playing. */
   useEffect(() => {
+    const show = (state: Screen) => {
+      screenState.current = state;
+      stageRef.current?.setScreen(state);
+    };
     if (!playing) {
-      screenImage.current = null;
-      stageRef.current?.setScreen(null);
+      show({ on: false });
       return;
     }
+    const tuned = { on: true, channel: channelLabel(channel), title: playing.title } as const;
+    show({ ...tuned, image: null });
     const image = new Image();
     image.crossOrigin = "anonymous";
-    image.onload = () => {
-      screenImage.current = image;
-      stageRef.current?.setScreen(image);
-    };
+    image.onload = () => show({ ...tuned, image });
     image.src = thumbnailFor(playing.videoId);
     return () => {
       image.onload = null;
     };
-  }, [playing]);
+  }, [playing, channel]);
 
   /* ---------- keyboard ---------- */
   useEffect(() => {

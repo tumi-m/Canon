@@ -152,11 +152,17 @@
   letter-spacing: 0.12em;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
 }
-.exit:hover,
-.exit:focus-visible {
+.exit:hover {
   background: var(--red);
   border-color: var(--red);
   color: #fff;
+}
+/* The way out is focused from the moment you walk in, so a keyboard user can
+   always reach it — and with a filled red focus style it glowed like an alarm
+   for the whole visit. Focus is a ring; red is for the hand on it. */
+.exit:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
 }
 .exitHint {
   display: block;

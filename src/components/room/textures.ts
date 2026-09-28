@@ -248,3 +248,126 @@ export function disposeTextures(): void {
   for (const texture of cache.values()) texture.dispose();
   cache.clear();
 }
+
+/** Lines of type set on a screen or a plaque, centred, top to bottom. */
+type Line = { text: string; size: number; colour: string; gap?: number; font?: "mono" | "serif" };
+
+function setLines(ctx: CanvasRenderingContext2D, lines: readonly Line[], width: number, height: number) {
+  const total = lines.reduce((h, l) => h + l.size * 1.25 + (l.gap ?? 0), 0);
+  let y = (height - total) / 2;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  for (const line of lines) {
+    y += line.gap ?? 0;
+    ctx.fillStyle = line.colour;
+    ctx.font =
+      line.font === "serif"
+        ? `400 ${line.size}px Georgia, serif`
+        : `500 ${line.size}px ui-monospace, monospace`;
+    ctx.fillText(line.text, width / 2, y, width - 60);
+    y += line.size * 1.25;
+  }
+}
+
+/**
+ * The set's glass when there is no picture on it: dark, with the faint
+ * reflection a switched-off screen actually has, and a line of type saying
+ * what it is for. A black rectangle read as a hole in the wall.
+ */
+export function screenTexture(lines: readonly Line[], lit: boolean): THREE.Texture {
+  const w = 1024;
+  const h = 576;
+  const ctx = surface(w, h);
+  const glass = ctx.createLinearGradient(0, 0, w, h);
+  glass.addColorStop(0, lit ? "#10231c" : "#0d1110");
+  glass.addColorStop(0.5, lit ? "#07130f" : "#070908");
+  glass.addColorStop(1, lit ? "#0b1a15" : "#0a0c0b");
+  ctx.fillStyle = glass;
+  ctx.fillRect(0, 0, w, h);
+  // the window-shaped sheen a dark screen picks up from the room
+  const sheen = ctx.createLinearGradient(0, 0, w * 0.6, h);
+  sheen.addColorStop(0, "rgba(255,240,220,0.07)");
+  sheen.addColorStop(0.35, "rgba(255,240,220,0.02)");
+  sheen.addColorStop(0.36, "rgba(255,240,220,0)");
+  ctx.fillStyle = sheen;
+  ctx.fillRect(0, 0, w, h);
+  if (lit) {
+    // scanlines, faintly
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    for (let y = 0; y < h; y += 4) ctx.fillRect(0, y, w, 1);
+  }
+  setLines(ctx, lines, w, h);
+  const texture = new THREE.CanvasTexture(ctx.canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+/**
+ * The capsule's face: a brass plate engraved with what it is, and a wax seal.
+ * Without it the capsule was a pale panel nobody would guess was anything.
+ */
+export function plaqueTexture(timber: string): THREE.Texture {
+  const w = 512;
+  const h = 640;
+  const ctx = surface(w, h);
+  ctx.fillStyle = timber;
+  ctx.fillRect(0, 0, w, h);
+  // grain, lightly, so the face is the same wood as the rest of the box
+  const r = rand(53);
+  for (let i = 0; i < 260; i++) {
+    ctx.strokeStyle = `rgba(0,0,0,${0.03 + r() * 0.05})`;
+    ctx.lineWidth = 0.8 + r();
+    const x = r() * w;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x + (r() - 0.5) * 20, h);
+    ctx.stroke();
+  }
+  // the brass plate
+  const plate = ctx.createLinearGradient(0, 150, 0, 330);
+  plate.addColorStop(0, "#e2bd72");
+  plate.addColorStop(0.5, "#b88a3e");
+  plate.addColorStop(1, "#8a6326");
+  ctx.fillStyle = plate;
+  ctx.fillRect(70, 150, w - 140, 180);
+  ctx.strokeStyle = "rgba(60,36,8,0.7)";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(80, 160, w - 160, 160);
+  ctx.save();
+  ctx.translate(0, 150);
+  setLines(
+    ctx,
+    [
+      { text: "THE CAPSULE", size: 40, colour: "#3d2708" },
+      { text: "SEALED UNTIL ITS DATE", size: 18, colour: "#4a3010", gap: 10 },
+    ],
+    w,
+    180,
+  );
+  ctx.restore();
+  // the seal
+  const cx = w / 2;
+  const cy = 450;
+  const wax = ctx.createRadialGradient(cx - 14, cy - 16, 6, cx, cy, 62);
+  wax.addColorStop(0, "#e2553d");
+  wax.addColorStop(0.6, "#b3301c");
+  wax.addColorStop(1, "#6e170b");
+  ctx.fillStyle = wax;
+  ctx.beginPath();
+  for (let i = 0; i < 28; i++) {
+    const a = (i / 28) * Math.PI * 2;
+    const rad = 58 + (i % 2 ? 4 : -2) + r() * 3;
+    ctx.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,210,190,0.55)";
+  ctx.font = "600 44px Georgia, serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("✦", cx, cy + 2);
+  const texture = new THREE.CanvasTexture(ctx.canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}

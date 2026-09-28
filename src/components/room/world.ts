@@ -101,10 +101,27 @@ export type Lamp = { key: string; x: number; y: number; z: number };
 
 export type Section = { readonly name: string; readonly entries: readonly number[] };
 
+/**
+ * The television and the sideboard it stands on, against the right-hand wall.
+ * It lives in the model because it is furniture you can walk into — and
+ * because it once stood somewhere nobody had checked, straight through the
+ * shelf beside it.
+ */
+export type TvSet = {
+  /** centre of the sideboard's footprint */
+  readonly x: number;
+  readonly z: number;
+  /** along the wall */
+  readonly length: number;
+  /** out from the wall */
+  readonly depth: number;
+};
+
 export type World = {
   readonly sections: readonly Section[];
   readonly units: readonly Unit[];
   readonly lamps: readonly Lamp[];
+  readonly set: TvSet;
   readonly boxes: readonly Box[];
   readonly hatchZ: number;
   readonly bounds: { xMin: number; xMax: number; zMin: number; zMax: number };
@@ -273,6 +290,14 @@ export function buildWorld(
     });
   }
 
+  const set: TvSet = { x: G.roomX - 90, z: 70, length: 820, depth: 170 };
+  boxes.push({
+    x0: set.x - set.depth / 2,
+    x1: set.x + set.depth / 2,
+    z0: set.z - set.length / 2,
+    z1: set.z + set.length / 2,
+  });
+
   /* hung high and away from where you come in: a pendant at eye level, a
      stride from the door, is a lamp in your face rather than a lit room */
   const lamps: Lamp[] = [
@@ -284,6 +309,7 @@ export function buildWorld(
     sections,
     units,
     lamps,
+    set,
     boxes,
     hatchZ: G.backZ + 60,
     bounds: {
