@@ -8,7 +8,7 @@ import { WEIGHT_LABEL } from "@/lib/schema";
 import { offersFor, regionName } from "@/lib/availability";
 import { channelLabel, channelsFrom, embedUrl, surf, thumbnailFor, thumbnailForEntry } from "@/lib/youtube";
 import { createRoomSound, STRIDE, type RoomSound } from "@/lib/roomSound";
-import { artFor, buildWorld, collide, G, nearestUnit, viewpointFor, type Pose, type Unit } from "./world";
+import { artFor, buildWorld, collide, G, nearestUnit, viewpointFor, type Face, type Pose } from "./world";
 import { buildStage, hitOf, type Hit, type Screen, type Stage } from "./scene";
 import { VENUES, venueById, type VenueId } from "./venues";
 import styles from "./Room.module.css";
@@ -213,9 +213,24 @@ function RoomScene({
     [channels.length],
   );
 
-  /** Walk over to a shelf and face it — from the list, or its number key. */
+  /**
+   * Everywhere the list can take you: the shelves, then the set (if anything
+   * plays on it) and the capsule. The set and the capsule used to be
+   * reachable only by steering at them, which at a low frame rate could mean
+   * turning straight past.
+   */
+  const places = useMemo(
+    () => [
+      ...world.units.map((u) => ({ key: u.key, label: u.label, face: u as Face })),
+      ...(channels.length ? [{ key: "set", label: world.screen.label, face: world.screen as Face }] : []),
+      { key: "capsule", label: world.capsule.label, face: world.capsule as Face },
+    ],
+    [world, channels.length],
+  );
+
+  /** Walk over to a place and face it — from the list, or its number key. */
   const goTo = useCallback(
-    (unit: Unit) => {
+    (unit: Face) => {
       const L = live.current;
       const to = viewpointFor(unit, world, window.innerWidth / Math.max(1, window.innerHeight));
       const from: Pose = { x: L.x, z: L.z, yaw: L.yaw, pitch: L.pitch };
@@ -549,9 +564,9 @@ function RoomScene({
         e.preventDefault();
         return;
       }
-      const shelf = /^[1-9]$/.test(k) ? world.units[Number(k) - 1] : undefined;
-      if (shelf) {
-        goTo(shelf);
+      const place = /^[1-9]$/.test(k) ? places[Number(k) - 1] : undefined;
+      if (place) {
+        goTo(place.face);
         e.preventDefault();
         return;
       }
@@ -611,7 +626,7 @@ function RoomScene({
       document.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
     };
-  }, [activate, capsule, channels.length, goTo, onLeave, opened, theatre, tune, world.units]);
+  }, [activate, capsule, channels.length, goTo, onLeave, opened, places, theatre, tune]);
 
   /* ---------- looking around ---------- */
   useEffect(() => {
@@ -791,17 +806,21 @@ function RoomScene({
       ) : null}
 
       {/* the shelves, and the way to each: click one, or press its number */}
-      <nav className={styles.shelfList} aria-label="shelves" inert={covered ? true : undefined}>
-        {world.units.map((unit, i) => (
+      <nav className={styles.shelfList} aria-label="places in the room" inert={covered ? true : undefined}>
+        {places.map((place, i) => (
           <button
-            key={unit.key}
-            className={`${styles.shelfRow} ${at === unit.label ? styles.shelfOn : ""}`}
-            aria-current={at === unit.label ? "location" : undefined}
-            onClick={() => goTo(unit)}
-            title={`walk over to ${unit.label} (${i + 1})`}
+            key={place.key}
+            className={[
+              styles.shelfRow,
+              at === place.label ? styles.shelfOn : "",
+              i === world.units.length ? styles.shelfBreak : "",
+            ].join(" ")}
+            aria-current={at === place.label ? "location" : undefined}
+            onClick={() => goTo(place.face)}
+            title={`walk over to ${place.label} (${i + 1})`}
           >
             <span className={styles.shelfDot} />
-            <span className={styles.shelfName}>{unit.label}</span>
+            <span className={styles.shelfName}>{place.label}</span>
             {i < 9 ? <kbd className={styles.shelfKey}>{i + 1}</kbd> : null}
           </button>
         ))}
@@ -821,7 +840,7 @@ function RoomScene({
         <span className={styles.hint}>
           {coarse
             ? "drag the pad to walk · drag the room to look · tap what you are aiming at"
-            : `wasd to walk · arrows or mouse to look · e takes it off the shelf · 1–${Math.min(9, world.units.length)} walks you to a shelf`}
+            : `wasd to walk · arrows or mouse to look · e takes it off the shelf · 1–${Math.min(9, places.length)} walk you there`}
         </span>
         <span className={styles.now}>
           {playing

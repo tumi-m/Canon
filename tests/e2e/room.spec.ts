@@ -60,18 +60,13 @@ test.describe("the room", () => {
 
   test("the capsule opens in the room instead of throwing you out", async ({ page }) => {
     await openRoom(page);
-    await walkUntilAimed(page);
-    // it sits on the back wall to the left of the bookcase you walk up to
-    let aimed = "";
-    for (let i = 0; i < 80 && aimed !== "the capsule"; i++) {
-      await page.keyboard.down("ArrowLeft");
-      await page.waitForTimeout(60);
-      await page.keyboard.up("ArrowLeft");
-      await page.waitForTimeout(200);
-      const label = page.locator("[class*=aimLabel]");
-      aimed = (await label.count()) ? ((await label.innerText()).split("\n")[0] ?? "") : "";
-    }
-    expect(aimed).toBe("the capsule");
+    // walked to from the list: steering at it was the only way, and a slow
+    // frame could turn you straight past it
+    await page
+      .getByRole("navigation", { name: "places in the room" })
+      .getByRole("button", { name: /the capsule/ })
+      .click();
+    await expect(page.locator("[class*=aimLabel]")).toContainText("the capsule", { timeout: 20_000 });
     await page.keyboard.press("e");
     const card = page.getByRole("dialog", { name: "the capsule" });
     await expect(card).toBeVisible();
@@ -81,10 +76,17 @@ test.describe("the room", () => {
     await expect(page.locator("[data-canon-room]")).toHaveCount(1);
   });
 
+  test("walks you to the set, and it says what it is for", async ({ page }) => {
+    await openRoom(page);
+    await page.keyboard.press("5");
+    await expect(page.locator("[class*=aimLabel]")).toContainText("the television", { timeout: 20_000 });
+    await expect(page.locator("[class*=now]")).toHaveText("the set");
+  });
+
   test("walks you to a shelf you pick from the list, or by its number", async ({ page }) => {
     await openRoom(page);
     const badge = page.locator("[class*=now]");
-    const shelves = page.getByRole("navigation", { name: "shelves" });
+    const shelves = page.getByRole("navigation", { name: "places in the room" });
 
     await shelves.getByRole("button", { name: /the good shelf/ }).click();
     // you arrive facing it: the reticle is on one of its cases, and the badge says where you are

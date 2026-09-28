@@ -28,29 +28,44 @@ export default function ViewSwitch({
   };
 
   return (
+    /* The filled pill was the only sign of which view and which region were
+       chosen — nothing a screen reader could hear. aria-current says it. */
     <div className={styles.bar}>
-      <div className={styles.group}>
-        <Link href={href({ view: "wall" })} className={view === "wall" ? styles.on : styles.off} scroll={false}>
+      <nav className={styles.group} aria-label="how to look at it">
+        <Link
+          href={href({ view: "wall" })}
+          className={view === "wall" ? styles.on : styles.off}
+          aria-current={view === "wall" ? "page" : undefined}
+          scroll={false}
+        >
           the wall
         </Link>
-        <Link href={href({ view: "list" })} className={view === "list" ? styles.on : styles.off} scroll={false}>
+        <Link
+          href={href({ view: "list" })}
+          className={view === "list" ? styles.on : styles.off}
+          aria-current={view === "list" ? "page" : undefined}
+          scroll={false}
+        >
           the list
         </Link>
-      </div>
+      </nav>
 
-      <div className={styles.group}>
-        <span className={styles.label}>where you are</span>
+      <nav className={styles.group} aria-label="where you are">
+        <span className={styles.label} aria-hidden="true">
+          where you are
+        </span>
         {Object.entries(REGIONS).map(([code, name]) => (
           <Link
             key={code}
             href={href({ region: code })}
             className={code === region ? styles.on : styles.off}
+            aria-current={code === region ? "true" : undefined}
             scroll={false}
           >
             {name}
           </Link>
         ))}
-      </div>
+      </nav>
     </div>
   );
 }

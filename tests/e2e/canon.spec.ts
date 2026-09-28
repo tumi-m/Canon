@@ -37,4 +37,19 @@ test.describe("a canon", () => {
       expect(href).not.toContain("netflix.com");
     }
   });
+
+  test("unfurls as a card with whose canon it is when the link is sent", async ({ page, request }) => {
+    await page.goto("/tumelo");
+    const image = await page.locator('meta[property="og:image"]').getAttribute("content");
+    expect(image).toContain("/tumelo/opengraph-image");
+    const res = await request.get(new URL(image!).pathname);
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toContain("image/png");
+  });
+
+  test("says which view and which region are chosen, not only by colour", async ({ page }) => {
+    await page.goto("/tumelo?region=jp&view=list");
+    await expect(page.getByRole("link", { name: "the list", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("link", { name: "japan", exact: true })).toHaveAttribute("aria-current", "true");
+  });
 });

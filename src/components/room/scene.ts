@@ -44,7 +44,7 @@ export type Hit = {
   readonly key: string;
   readonly entry: number | null;
   readonly label: string;
-  /** the shelf this sits on, for the "where you are" badge */
+  /** the shelf this sits on — or the set, or the capsule — for the "where you are" badge */
   readonly shelf: string | null;
 };
 
@@ -457,7 +457,7 @@ export function buildStage(
   tv.position.set(set.x + set.depth / 2 - 50, TV_Y, set.z);
   tv.rotation.y = -Math.PI / 2;
   tv.userData["hit"] = {
-    kind: "tv", key: "__tv", entry: null, label: "the television", shelf: null,
+    kind: "tv", key: "__tv", entry: null, label: "the television", shelf: world.screen.label,
   } satisfies Hit;
   scene.add(tv);
   targets.push(tv);
@@ -501,19 +501,18 @@ export function buildStage(
       emissiveIntensity: 0.04,
     }),
   );
-  const CAPSULE_H = 400;
-  const capsule = new THREE.Mesh(new THREE.BoxGeometry(320, CAPSULE_H, 140), [
+  const capsule = new THREE.Mesh(new THREE.BoxGeometry(world.capsule.width, world.capsule.height, 140), [
     capsuleSide, capsuleSide, capsuleSide, capsuleSide, capsuleFace, capsuleSide,
   ]);
-  capsule.position.set(-690, up(G.floorY) + CAPSULE_H / 2, world.hatchZ + 90);
-  capsule.rotation.y = (18 * Math.PI) / 180;
+  capsule.position.set(world.capsule.fx, up(world.capsule.fy), world.capsule.fz);
+  capsule.rotation.y = (world.capsule.rot * Math.PI) / 180;
   capsule.castShadow = true;
   capsule.userData["hit"] = {
     kind: "capsule",
     key: "__capsule",
     entry: null,
     label: "the capsule",
-    shelf: null,
+    shelf: world.capsule.label,
   } satisfies Hit;
   scene.add(capsule);
   targets.push(capsule);

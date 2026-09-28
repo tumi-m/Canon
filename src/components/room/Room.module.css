@@ -648,6 +648,11 @@
   .shelfKey {
     display: none;
   }
+  .shelfBreak {
+    margin: 0 0 0 8px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(240, 226, 203, 0.25);
+  }
 }
 
 /* change building without leaving */
@@ -890,6 +895,12 @@
 }
 .shelfName {
   flex: 1;
+}
+/* the shelves, then the other things in the room worth walking to */
+.shelfBreak {
+  margin-top: 6px;
+  border-top: 1px solid rgba(240, 226, 203, 0.12);
+  padding-top: 8px;
 }
 .shelfKey {
   font-family: var(--mono);

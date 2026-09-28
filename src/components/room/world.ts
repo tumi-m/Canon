@@ -117,6 +117,17 @@ export type TvSet = {
   readonly depth: number;
 };
 
+/**
+ * Something with a face you walk up to and look at: a shelf, the set, the
+ * capsule. Enough to work out where to stand to see all of it.
+ */
+export type Face = Pick<Unit, "fx" | "fy" | "fz" | "rot" | "width" | "height"> & {
+  readonly furniture?: Furniture;
+};
+
+/** A place in the room that is not a shelf, but that you might want to go to. */
+export type Feature = Face & { readonly key: "set" | "capsule"; readonly label: string };
+
 export type World = {
   readonly sections: readonly Section[];
   readonly units: readonly Unit[];
@@ -124,6 +135,10 @@ export type World = {
   readonly set: TvSet;
   readonly boxes: readonly Box[];
   readonly hatchZ: number;
+  /** the capsule, standing on the floor against the back wall */
+  readonly capsule: Feature;
+  /** the set's screen, where you look when you look at it */
+  readonly screen: Feature;
   readonly bounds: { xMin: number; xMax: number; zMin: number; zMax: number };
 };
 
@@ -312,6 +327,28 @@ export function buildWorld(
     set,
     boxes,
     hatchZ: G.backZ + 60,
+    capsule: {
+      key: "capsule",
+      label: "the capsule",
+      fx: -690,
+      // standing on the floor: +y is down, so its middle is half its height up
+      fy: G.floorY - 200,
+      fz: G.backZ + 150,
+      rot: 18,
+      width: 320,
+      height: 400,
+    },
+    screen: {
+      key: "set",
+      label: "the set",
+      // the screen faces into the room from the sideboard's back edge
+      fx: set.x + set.depth / 2 - 85,
+      fy: G.floorY - 330,
+      fz: set.z,
+      rot: -90,
+      width: 780,
+      height: 460,
+    },
     bounds: {
       xMin: -G.roomX + G.radius,
       xMax: G.roomX - G.radius,
@@ -380,7 +417,7 @@ export type Pose = { x: number; z: number; yaw: number; pitch: number };
  * Yaw follows the camera's convention: forward is (sin yaw, −cos yaw).
  */
 export function viewpointFor(
-  unit: Unit,
+  unit: Face,
   world: Pick<World, "boxes" | "bounds">,
   /** the view's width over its height */
   aspect = 16 / 9,
