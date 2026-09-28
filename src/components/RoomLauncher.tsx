@@ -1,10 +1,29 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Entry, Region } from "@/lib/schema";
-import Room from "./room/Room";
 import { DEFAULT_VENUE, VENUES, type VenueId } from "./room/venues";
 import styles from "./RoomLauncher.module.css";
+
+/** the room's code, fetched once: on the first hover, focus or press */
+const loadRoom = () => import("./room/Room");
+
+/*
+ * Loaded on demand. A static import put three.js — most of the room's weight —
+ * into the first load of every canon page, for every visitor, including the
+ * ones who only ever read the list. The docblock below promised otherwise.
+ */
+const Room = dynamic(loadRoom, {
+  ssr: false,
+  // between the press and the code arriving: the same curtain the room uses
+  loading: () => (
+    <div className={styles.pending} role="status">
+      opening the door…
+    </div>
+  ),
+});
 
 /**
  * The room is an enhancement, never a requirement: the canon is fully readable
@@ -17,14 +36,18 @@ export default function RoomLauncher({
   region,
   services,
   displayName,
+  listHref,
   label = "▶ step into the room",
 }: {
   entries: readonly Entry[];
   region: Region;
   services: readonly string[];
   displayName: string;
+  /** where "read it as a list" goes: this canon, this region, the list view */
+  listHref: string;
   label?: string;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [venue, setVenue] = useState<VenueId>(DEFAULT_VENUE);
@@ -32,7 +55,13 @@ export default function RoomLauncher({
   return (
     <>
       <div className={styles.row}>
-        <button className={styles.button} onClick={() => setOpen(true)}>
+        <button
+          className={styles.button}
+          onClick={() => setOpen(true)}
+          // start fetching the room while the hand is still on its way
+          onPointerEnter={() => void loadRoom()}
+          onFocus={() => void loadRoom()}
+        >
           {label}
         </button>
         <label className={styles.pick}>
@@ -67,12 +96,12 @@ export default function RoomLauncher({
           onBrowseList={() => {
             setOpen(false);
             setNote("same shelves, read as a list.");
-          }}
-          onCapsule={() => {
-            setOpen(false);
-            setNote(
-              "capsules stay sealed until the date they are addressed to. sealing one needs the database — that is M6.",
-            );
+            /* it used to close the room onto whichever view was showing — the
+               wall, usually — while the note said "read as a list" */
+            router.push(listHref, { scroll: false });
+            window.setTimeout(() => {
+              document.getElementById("canon-view")?.scrollIntoView({ block: "start" });
+            }, 60);
           }}
         />
       ) : null}

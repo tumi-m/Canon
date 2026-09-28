@@ -229,7 +229,11 @@
   color: #f0e2cb;
   font-size: 0.72rem;
 }
-.hudBot button:hover {
+.hudBot button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.hudBot button:hover:not(:disabled) {
   background: var(--red);
   border-color: var(--red);
   color: #fff;
@@ -772,4 +776,65 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
+
+/* the capsule's card: brass and paper, and deliberately nothing inside */
+.capsuleCard {
+  position: relative;
+  width: min(380px, 86vw);
+  padding: 34px 28px 26px;
+  border-radius: 6px;
+  background:
+    linear-gradient(160deg, rgba(255, 236, 200, 0.07), transparent 60%),
+    #17110d;
+  border: 1px solid rgba(214, 170, 96, 0.45);
+  box-shadow:
+    0 0 0 6px rgba(214, 170, 96, 0.06),
+    0 30px 70px rgba(0, 0, 0, 0.7);
+  color: #f0e2cb;
+  text-align: left;
+  animation: pickUp 0.62s var(--ease) both;
+}
+.seal {
+  position: absolute;
+  top: -22px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #e0503a, var(--red) 55%, #7a2012);
+  color: #ffd9c8;
+  font-size: 1.1rem;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+.capsuleKicker {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #d6aa60;
+}
+.capsuleTitle {
+  margin-top: 10px;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+.capsuleBody {
+  margin-top: 14px;
+  font-family: var(--serif);
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: #e3d3b6;
+}
+.capsuleNote {
+  margin-top: 14px;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  line-height: 1.7;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
 }

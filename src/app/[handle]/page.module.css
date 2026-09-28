@@ -88,3 +88,8 @@
   letter-spacing: 0.08em;
   color: var(--ink-soft);
 }
+
+/* landing here from the room's "read it as a list" leaves a little headroom */
+.viewAnchor {
+  scroll-margin-top: 16px;
+}

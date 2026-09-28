@@ -22,7 +22,6 @@ type Props = {
   onVenue: (venue: VenueId) => void;
   onLeave: () => void;
   onBrowseList: () => void;
-  onCapsule: () => void;
 };
 
 /** Everything the frame loop mutates, kept out of React state. */
@@ -95,7 +94,7 @@ export default function Room(props: Props) {
 
 function RoomScene({
   entries, region, services, displayName, venue, onVenue,
-  onLeave, onBrowseList, onCapsule, host, opener,
+  onLeave, onBrowseList, host, opener,
 }: Props & { host: HTMLElement; opener: React.RefObject<HTMLElement | null> }) {
   const place = useMemo(() => venueById(venue), [venue]);
   const world = useMemo(() => buildWorld(entries, place.shelves), [entries, place]);
@@ -115,6 +114,8 @@ function RoomScene({
   const [flipped, setFlipped] = useState(false);
   const [coarse, setCoarse] = useState(false);
   const [theatre, setTheatre] = useState(false);
+  /** the capsule's card: what it is, and why it stays shut */
+  const [capsule, setCapsule] = useState(false);
   /** the room is drawn on the gpu; say which of the three states it is in */
   const [gl, setGl] = useState<"loading" | "ready" | "failed">("loading");
   /** the curtain stays down while the room builds, then lifts rather than vanishing */
@@ -179,8 +180,15 @@ function RoomScene({
   const activate = useCallback(
     (hit: Hit | null) => {
       if (!hit) return;
-      if (hit.kind === "capsule") return onCapsule();
+      /* it used to close the room and say so on the page behind — thrown out
+         of somebody's den for looking at the one thing in it that waits */
+      if (hit.kind === "capsule") {
+        setCapsule(true);
+        sound.current?.pick();
+        return;
+      }
       if (hit.kind === "tv") {
+        if (channels.length === 0) return;
         setTvOn(true);
         setTheatre(true);
         sound.current?.clack();
@@ -192,7 +200,7 @@ function RoomScene({
         sound.current?.pick();
       }
     },
-    [onCapsule],
+    [channels.length],
   );
 
   /* ---------- build the scene ---------- */
@@ -417,14 +425,25 @@ function RoomScene({
     };
   }, [world, place, entries, providerFor]);
 
-  /* the big screen pauses the room; nothing you were holding stays held */
+  /* The big screen pauses the room; nothing you were holding stays held.
+     Paused only when there is a screen to look at: a canon with nothing
+     embeddable used to freeze the room with nothing over it. */
+  const watching = theatre && !!playing;
   useEffect(() => {
-    paused.current = theatre;
-    if (theatre) {
+    paused.current = watching;
+    if (watching) {
       live.current.keys.clear();
       live.current.look = { x: 0, y: 0 };
     }
-  }, [theatre]);
+  }, [watching]);
+
+  /* Anything over the room gives the pointer back. With the mouse still
+     captured, the cursor stayed hidden and a card's own buttons could not
+     be clicked. */
+  const covering = opened !== null || watching || capsule;
+  useEffect(() => {
+    if (covering && document.pointerLockElement) document.exitPointerLock();
+  }, [covering]);
 
   // the way out has focus from the moment you are in, not once the gpu is done
   useEffect(() => {
@@ -462,7 +481,7 @@ function RoomScene({
         e.target instanceof Element && e.target.closest("button, a, select, input, textarea");
       if (control && (k === "enter" || k === " ")) return;
       // with a card in your hands, or the big screen up, you are not walking
-      if ((opened !== null || theatre) && (KEYMAP[k] || LOOKMAP[k])) return;
+      if ((opened !== null || theatre || capsule) && (KEYMAP[k] || LOOKMAP[k])) return;
       if (KEYMAP[k]) {
         L.keys.add(KEYMAP[k]!);
         e.preventDefault();
@@ -476,14 +495,15 @@ function RoomScene({
         return;
       }
       if (k === "e" || k === "enter") {
-        if (opened === null && !theatre) activate(L.aim);
+        if (opened === null && !theatre && !capsule) activate(L.aim);
         e.preventDefault();
         return;
       }
       if (k === "t") {
+        e.preventDefault();
+        if (channels.length === 0) return;
         setTvOn(true);
         setTheatre((on) => !on);
-        e.preventDefault();
         return;
       }
       if (k === "]" || k === ".") return tune(1);
@@ -493,7 +513,8 @@ function RoomScene({
         return;
       }
       if (k === "escape") {
-        if (theatre) setTheatre(false);
+        if (capsule) setCapsule(false);
+        else if (theatre) setTheatre(false);
         else if (opened !== null) setOpened(null);
         else if (document.pointerLockElement === rootRef.current) document.exitPointerLock();
         else onLeave();
@@ -521,7 +542,7 @@ function RoomScene({
       document.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
     };
-  }, [activate, onLeave, opened, theatre, tune]);
+  }, [activate, capsule, channels.length, onLeave, opened, theatre, tune]);
 
   /* ---------- looking around ---------- */
   useEffect(() => {
@@ -638,7 +659,7 @@ function RoomScene({
   };
 
   /** a card in your hands or the big screen up: what is behind is out of reach */
-  const covered = opened !== null || (theatre && !!playing);
+  const covered = covering;
   const openedEntry = opened === null ? undefined : entries[opened];
   const offers = openedEntry ? offersFor(openedEntry.work.id, region) : [];
   const openedThumb = openedEntry ? thumbnailForEntry(openedEntry) : undefined;
@@ -752,11 +773,17 @@ function RoomScene({
               setTvOn(true);
               setTheatre(true);
             }}
-            title="watch full size (t)"
+            disabled={channels.length === 0}
+            title={channels.length ? "watch full size (t)" : "nothing on this canon plays on a screen"}
           >
             ▶ watch
           </button>
-          <button onClick={() => setTvOn((on) => !on)} title="the set in the room" aria-pressed={tvOn}>
+          <button
+            onClick={() => setTvOn((on) => !on)}
+            disabled={channels.length === 0}
+            title={channels.length ? "the set in the room" : "nothing on this canon plays on a screen"}
+            aria-pressed={tvOn}
+          >
             {tvOn ? "◼ set off" : "◻ set on"}
           </button>
           {tvOn && channels.length > 0 ? (
@@ -831,6 +858,32 @@ function RoomScene({
               ↩ back to the room
             </button>
             <button onClick={onLeave}>✕ leave</button>
+          </div>
+        </div>
+      ) : null}
+
+      {capsule ? (
+        <div className={styles.inspect} role="dialog" aria-modal="true" aria-label="the capsule">
+          <div className={styles.capsuleCard}>
+            <span className={styles.seal} aria-hidden="true">
+              ✦
+            </span>
+            <p className={styles.capsuleKicker}>the capsule · sealed</p>
+            <h3 className={styles.capsuleTitle}>kept for the ones who come after</h3>
+            <p className={styles.capsuleBody}>
+              a shelf {displayName} can seal and address to named people, to be opened on a
+              date — a birthday, a year from now, after they are gone. until then nobody sees
+              what is inside, not even a blurred cover.
+            </p>
+            <p className={styles.capsuleNote}>
+              sealing one needs accounts and the database, which come next. this one is empty
+              and stays shut.
+            </p>
+          </div>
+          <div className={styles.tools}>
+            <button onClick={() => setCapsule(false)} autoFocus>
+              ✕ leave it sealed
+            </button>
           </div>
         </div>
       ) : null}

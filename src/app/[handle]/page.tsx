@@ -93,11 +93,14 @@ export default async function CanonPage({
             region={region}
             services={Object.keys(PROVIDERS)}
             displayName={canon.displayName}
+            listHref={`/${canon.handle}?region=${region}&view=list`}
           />
         </div>
       </section>
 
-      <ViewSwitch handle={canon.handle} region={region} view={view} />
+      <div id="canon-view" className={styles.viewAnchor}>
+        <ViewSwitch handle={canon.handle} region={region} view={view} />
+      </div>
 
       {view === "list" ? (
         <CanonList entries={canon.entries} region={region} />

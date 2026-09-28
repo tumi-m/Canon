@@ -89,3 +89,24 @@
     transform: translateY(6px);
   }
 }
+
+/* the few hundred milliseconds between the press and the room's code arriving */
+.pending {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  color: var(--room-label);
+  background: var(--room-void);
+  animation: pendingIn 0.3s ease-out both;
+}
+@keyframes pendingIn {
+  from {
+    opacity: 0;
+  }
+}

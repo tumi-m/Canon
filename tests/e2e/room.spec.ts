@@ -58,6 +58,29 @@ test.describe("the room", () => {
     await page.keyboard.up("ArrowRight");
   });
 
+  test("the capsule opens in the room instead of throwing you out", async ({ page }) => {
+    await openRoom(page);
+    await walkUntilAimed(page);
+    // it sits on the back wall to the left of the bookcase you walk up to
+    let aimed = "";
+    for (let i = 0; i < 80 && aimed !== "the capsule"; i++) {
+      await page.keyboard.down("ArrowLeft");
+      await page.waitForTimeout(60);
+      await page.keyboard.up("ArrowLeft");
+      await page.waitForTimeout(200);
+      const label = page.locator("[class*=aimLabel]");
+      aimed = (await label.count()) ? ((await label.innerText()).split("\n")[0] ?? "") : "";
+    }
+    expect(aimed).toBe("the capsule");
+    await page.keyboard.press("e");
+    const card = page.getByRole("dialog", { name: "the capsule" });
+    await expect(card).toBeVisible();
+    await expect(page.locator("[data-canon-room]")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(card).toHaveCount(0);
+    await expect(page.locator("[data-canon-room]")).toHaveCount(1);
+  });
+
   test("takes something off the shelf and shows its why", async ({ page }) => {
     await openRoom(page);
     await walkUntilAimed(page);
@@ -94,7 +117,27 @@ test.describe("the room", () => {
     await page.getByRole("button", { name: "read it as a list" }).click();
     await expect(page.locator("[data-canon-room]")).toHaveCount(0);
     await expect(page.getByText("same shelves, read as a list.")).toBeVisible();
-    await expect(page.getByText("making of gta 1, 1996").first()).toBeVisible();
+    // and it is the list you land on, not whichever view was behind the room
+    await expect(page).toHaveURL(/view=list/);
+    await expect(page.getByRole("region", { name: /the ones that changed me/ })).toBeVisible();
+  });
+
+  test("the room's code is not downloaded until someone asks for it", async ({ page }) => {
+    // three.js used to ride in the first load of every canon page
+    const scripts: Promise<string>[] = [];
+    page.on("response", (res) => {
+      if (res.url().endsWith(".js")) scripts.push(res.text().catch(() => ""));
+    });
+    const hasRenderer = async () =>
+      (await Promise.all(scripts)).some((body) => body.includes("WebGLRenderer"));
+
+    await page.goto("/tumelo");
+    await page.waitForLoadState("networkidle");
+    expect(await hasRenderer()).toBe(false);
+
+    await page.getByRole("button", { name: "step into the room" }).click();
+    await expect(page.getByRole("button", { name: "let yourself out" })).toBeVisible();
+    expect(await hasRenderer()).toBe(true);
   });
 });
 
