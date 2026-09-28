@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Entry } from "@/lib/schema";
-import { buildWorld, collide, G, nearestUnit, sectionsFor, SLEEVE } from "./world";
+import { buildWorld, collide, G, nearestUnit, sectionsFor, SLEEVE, viewpointFor } from "./world";
 import { getCanon } from "@/lib/canon";
 
 const entries = getCanon("tumelo")!.entries;
@@ -147,6 +147,50 @@ describe("venues", () => {
   it("falls back to the default name for any the venue leaves out", () => {
     expect(sectionsFor(entries, ["only one"])[0]?.name).toBe("only one");
     expect(sectionsFor(entries, [])[0]?.name).toBe("the ones that changed me");
+  });
+});
+
+describe("viewpointFor", () => {
+  const world = buildWorld(entries);
+
+  it("stands you somewhere you could have walked to", () => {
+    for (const unit of world.units) {
+      const at = viewpointFor(unit, world);
+      expect(collide(at.x, at.z, world.boxes, world.bounds)).toEqual([at.x, at.z]);
+    }
+  });
+
+  it("faces you square on to the shelf", () => {
+    for (const unit of world.units) {
+      const at = viewpointFor(unit, world);
+      const yaw = (at.yaw * Math.PI) / 180;
+      const toShelf = Math.hypot(unit.fx - at.x, unit.fz - at.z);
+      // forward is (sin yaw, -cos yaw); the shelf's centre should be dead ahead
+      const ahead =
+        (Math.sin(yaw) * (unit.fx - at.x) - Math.cos(yaw) * (unit.fz - at.z)) / toShelf;
+      expect(ahead).toBeCloseTo(1, 6);
+    }
+  });
+
+  it("looks down into a crate and up at a shelf", () => {
+    for (const unit of world.units) {
+      const at = viewpointFor(unit, world);
+      if (unit.furniture === "crate") expect(at.pitch).toBeLessThan(0);
+      else expect(at.pitch).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("stands further back on a screen held upright, so the whole shelf still fits", () => {
+    const back = world.units[0]!;
+    const wide = viewpointFor(back, world, 16 / 9);
+    const tall = viewpointFor(back, world, 390 / 844);
+    const from = (p: { x: number; z: number }) => Math.hypot(back.fx - p.x, back.fz - p.z);
+    expect(from(tall)).toBeGreaterThan(from(wide) * 1.5);
+  });
+
+  it("puts the back bookcase straight ahead of the door", () => {
+    const back = world.units[0]!;
+    expect(viewpointFor(back, world).yaw).toBeCloseTo(0, 6);
   });
 });
 

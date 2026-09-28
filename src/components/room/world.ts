@@ -362,3 +362,49 @@ export function nearestUnit(units: readonly Unit[], cam: Camera): Unit | undefin
   }
   return best;
 }
+
+/** Where you are standing and which way you are looking, in degrees. */
+export type Pose = { x: number; z: number; yaw: number; pitch: number };
+
+/**
+ * Where to stand to take in a whole shelf, and which way to face it.
+ *
+ * A face turned by θ about Y looks out along (sin θ, cos θ), so the spot is
+ * straight out from its middle, as far back as it takes for the whole face
+ * to fit the view — which depends on the screen's shape. A fixed distance
+ * worked on a wide monitor and left a phone held upright looking at two
+ * cases of a bookcase. Collision has the last word, and the facing is worked
+ * out from wherever it leaves you, so the shelf is centred even if the ideal
+ * spot was out of reach.
+ *
+ * Yaw follows the camera's convention: forward is (sin yaw, −cos yaw).
+ */
+export function viewpointFor(
+  unit: Unit,
+  world: Pick<World, "boxes" | "bounds">,
+  /** the view's width over its height */
+  aspect = 16 / 9,
+  /** the camera's vertical field of view, in degrees */
+  fov = 72,
+): Pose {
+  const theta = (unit.rot * Math.PI) / 180;
+  const tanV = Math.tan((fov * Math.PI) / 360);
+  const tanH = tanV * aspect;
+  // room to spare: the hud takes a strip off the top and bottom of the view
+  const margin = 1.38;
+  const fit = Math.max(unit.width / 2 / tanH, unit.height / 2 / tanV) * margin;
+  // a crate is shallow and you look down into it; a bookcase is deep
+  const back = fit + (unit.furniture === "crate" ? 40 : 75);
+  const [x, z] = collide(
+    unit.fx + Math.sin(theta) * back,
+    unit.fz + Math.cos(theta) * back,
+    world.boxes,
+    world.bounds,
+  );
+  const dx = unit.fx - x;
+  const dz = unit.fz - z;
+  const yaw = (Math.atan2(dx, -dz) * 180) / Math.PI;
+  // +y is down in this model, and a positive pitch looks up
+  const pitch = (Math.atan2(-unit.fy, Math.hypot(dx, dz)) * 180) / Math.PI;
+  return { x, z, yaw, pitch: Math.max(-42, Math.min(42, pitch)) };
+}

@@ -81,6 +81,24 @@ test.describe("the room", () => {
     await expect(page.locator("[data-canon-room]")).toHaveCount(1);
   });
 
+  test("walks you to a shelf you pick from the list, or by its number", async ({ page }) => {
+    await openRoom(page);
+    const badge = page.locator("[class*=now]");
+    const shelves = page.getByRole("navigation", { name: "shelves" });
+
+    await shelves.getByRole("button", { name: /the good shelf/ }).click();
+    // you arrive facing it: the reticle is on one of its cases, and the badge says where you are
+    await expect(badge).toHaveText("the good shelf", { timeout: 20_000 });
+    await expect(page.locator("[class*=aimLabel]")).toBeVisible();
+
+    await page.keyboard.press("1");
+    await expect(badge).toHaveText("the ones that changed me", { timeout: 20_000 });
+    await expect(shelves.getByRole("button", { name: /the ones that changed me/ })).toHaveAttribute(
+      "aria-current",
+      "location",
+    );
+  });
+
   test("takes something off the shelf and shows its why", async ({ page }) => {
     await openRoom(page);
     await walkUntilAimed(page);

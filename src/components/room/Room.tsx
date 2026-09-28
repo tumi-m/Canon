@@ -8,7 +8,7 @@ import { WEIGHT_LABEL } from "@/lib/schema";
 import { offersFor, regionName } from "@/lib/availability";
 import { channelLabel, channelsFrom, embedUrl, surf, thumbnailFor, thumbnailForEntry } from "@/lib/youtube";
 import { createRoomSound, STRIDE, type RoomSound } from "@/lib/roomSound";
-import { artFor, buildWorld, collide, G, nearestUnit } from "./world";
+import { artFor, buildWorld, collide, G, nearestUnit, viewpointFor, type Pose, type Unit } from "./world";
 import { buildStage, hitOf, type Hit, type Screen, type Stage } from "./scene";
 import { VENUES, venueById, type VenueId } from "./venues";
 import styles from "./Room.module.css";
@@ -44,7 +44,17 @@ type Live = {
   stride: number;
   /** 1 → 0 over the walk in through the door */
   intro: number;
+  /** walking over to a shelf somebody picked from the list, if they did */
+  glide: Glide | null;
 };
+
+type Glide = { from: Pose; to: Pose; t: number; seconds: number };
+
+/** ease in and out: a walk starts and stops, it does not teleport or skid */
+const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+
+/** the short way round from one heading to another, in degrees */
+const turnTo = (from: number, to: number) => ((((to - from) % 360) + 540) % 360) - 180;
 
 /** wasd walks. */
 const KEYMAP: Record<string, string> = { w: "w", a: "a", s: "s", d: "d" };
@@ -130,7 +140,7 @@ function RoomScene({
   const live = useRef<Live>({
     x: 0, z: G.spawnZ, yaw: 0, pitch: 0, vx: 0, vz: 0, bob: 0,
     keys: new Set(), look: { x: 0, y: 0 }, stick: { x: 0, y: 0 },
-    aim: null, raf: 0, last: 0, frame: 0, stride: 0, intro: 1,
+    aim: null, raf: 0, last: 0, frame: 0, stride: 0, intro: 1, glide: null,
   });
 
   /* ---------- the television ---------- */
@@ -201,6 +211,27 @@ function RoomScene({
       }
     },
     [channels.length],
+  );
+
+  /** Walk over to a shelf and face it — from the list, or its number key. */
+  const goTo = useCallback(
+    (unit: Unit) => {
+      const L = live.current;
+      const to = viewpointFor(unit, world, window.innerWidth / Math.max(1, window.innerHeight));
+      const from: Pose = { x: L.x, z: L.z, yaw: L.yaw, pitch: L.pitch };
+      if (reduced.current) {
+        Object.assign(L, { x: to.x, z: to.z, yaw: to.yaw, pitch: to.pitch, glide: null });
+        return;
+      }
+      const distance = Math.hypot(to.x - from.x, to.z - from.z);
+      const turn = Math.abs(turnTo(from.yaw, to.yaw));
+      // a walk takes as long as the walk, a turn on the spot not much less
+      const seconds = Math.min(2.2, Math.max(0.7, distance / 900 + turn / 260));
+      L.keys.clear();
+      L.look = { x: 0, y: 0 };
+      L.glide = { from, to, t: 0, seconds };
+    },
+    [world],
   );
 
   /* ---------- build the scene ---------- */
@@ -297,28 +328,53 @@ function RoomScene({
       };
 
       const step = (dt: number) => {
-        // arrows first: where you are facing decides which way forward is
-        if (L.look.x || L.look.y) {
-          L.yaw += L.look.x * TURN * dt;
-          L.pitch = Math.max(-42, Math.min(42, L.pitch + L.look.y * TURN * dt));
+        let moving: number;
+        if (L.glide) {
+          /* Walking over to a shelf picked from the list. It goes through
+             collision like any other step, so it slides round the crate
+             rather than through it, and it lands exactly where it meant to:
+             the spot is one you could have walked to. */
+          const g = L.glide;
+          g.t = Math.min(1, g.t + dt / g.seconds);
+          const e = easeInOut(g.t);
+          const [nx, nz] = collide(
+            g.from.x + (g.to.x - g.from.x) * e,
+            g.from.z + (g.to.z - g.from.z) * e,
+            world.boxes,
+            world.bounds,
+          );
+          moving = dt > 0 ? Math.hypot(nx - L.x, nz - L.z) / dt : 0;
+          L.x = nx;
+          L.z = nz;
+          L.yaw = g.from.yaw + turnTo(g.from.yaw, g.to.yaw) * e;
+          L.pitch = g.from.pitch + (g.to.pitch - g.from.pitch) * e;
+          L.vx = 0;
+          L.vz = 0;
+          if (g.t >= 1) L.glide = null;
+        } else {
+          // arrows first: where you are facing decides which way forward is
+          if (L.look.x || L.look.y) {
+            L.yaw += L.look.x * TURN * dt;
+            L.pitch = Math.max(-42, Math.min(42, L.pitch + L.look.y * TURN * dt));
+          }
+          const f = (L.keys.has("w") ? 1 : 0) - (L.keys.has("s") ? 1 : 0) + L.stick.y;
+          const r = (L.keys.has("d") ? 1 : 0) - (L.keys.has("a") ? 1 : 0) + L.stick.x;
+          const yaw = (L.yaw * Math.PI) / 180;
+          const ix = Math.sin(yaw) * f + Math.cos(yaw) * r;
+          const iz = -Math.cos(yaw) * f + Math.sin(yaw) * r;
+          const mag = Math.hypot(ix, iz);
+          const speed = G.speed;
+          const tx = mag ? (ix / mag) * speed : 0;
+          const tz = mag ? (iz / mag) * speed : 0;
+          const k = Math.min(1, dt * (reduced.current ? 40 : 9));
+          L.vx += (tx - L.vx) * k;
+          L.vz += (tz - L.vz) * k;
+          const [nx, nz] = collide(L.x + L.vx * dt, L.z + L.vz * dt, world.boxes, world.bounds);
+          L.x = nx;
+          L.z = nz;
+          moving = Math.hypot(L.vx, L.vz);
         }
-        const f = (L.keys.has("w") ? 1 : 0) - (L.keys.has("s") ? 1 : 0) + L.stick.y;
-        const r = (L.keys.has("d") ? 1 : 0) - (L.keys.has("a") ? 1 : 0) + L.stick.x;
-        const yaw = (L.yaw * Math.PI) / 180;
-        const ix = Math.sin(yaw) * f + Math.cos(yaw) * r;
-        const iz = -Math.cos(yaw) * f + Math.sin(yaw) * r;
-        const mag = Math.hypot(ix, iz);
-        const speed = G.speed;
-        const tx = mag ? (ix / mag) * speed : 0;
-        const tz = mag ? (iz / mag) * speed : 0;
-        const k = Math.min(1, dt * (reduced.current ? 40 : 9));
-        L.vx += (tx - L.vx) * k;
-        L.vz += (tz - L.vz) * k;
-        const [nx, nz] = collide(L.x + L.vx * dt, L.z + L.vz * dt, world.boxes, world.bounds);
-        L.x = nx;
-        L.z = nz;
 
-        const moving = Math.hypot(L.vx, L.vz);
         L.bob += moving * dt * 0.024;
         L.stride += moving * dt;
         if (L.stride > STRIDE) {
@@ -488,12 +544,20 @@ function RoomScene({
       // with a card in your hands, or the big screen up, you are not walking
       if ((opened !== null || theatre || capsule) && (KEYMAP[k] || LOOKMAP[k])) return;
       if (KEYMAP[k]) {
+        L.glide = null; // your own feet win over a walk you asked for
         L.keys.add(KEYMAP[k]!);
+        e.preventDefault();
+        return;
+      }
+      const shelf = /^[1-9]$/.test(k) ? world.units[Number(k) - 1] : undefined;
+      if (shelf) {
+        goTo(shelf);
         e.preventDefault();
         return;
       }
       const look = LOOKMAP[k];
       if (look) {
+        L.glide = null;
         L.look.x = look[0] || L.look.x;
         L.look.y = look[1] || L.look.y;
         e.preventDefault();
@@ -547,7 +611,7 @@ function RoomScene({
       document.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
     };
-  }, [activate, capsule, channels.length, onLeave, opened, theatre, tune]);
+  }, [activate, capsule, channels.length, goTo, onLeave, opened, theatre, tune, world.units]);
 
   /* ---------- looking around ---------- */
   useEffect(() => {
@@ -559,6 +623,7 @@ function RoomScene({
 
     const move = (e: MouseEvent) => {
       if (!locked()) return;
+      L.glide = null;
       L.yaw += e.movementX * 0.13;
       L.pitch = clamp(L.pitch - e.movementY * 0.104);
     };
@@ -575,6 +640,7 @@ function RoomScene({
     };
     const pointerMove = (e: PointerEvent) => {
       if (!dragging || locked()) return;
+      L.glide = null;
       L.yaw += (e.clientX - px) * 0.22;
       L.pitch = clamp(L.pitch - (e.clientY - py) * 0.16);
       px = e.clientX;
@@ -724,17 +790,22 @@ function RoomScene({
         )
       ) : null}
 
-      <div className={styles.shelfList}>
-        {world.units.map((unit) => (
-          <div
+      {/* the shelves, and the way to each: click one, or press its number */}
+      <nav className={styles.shelfList} aria-label="shelves" inert={covered ? true : undefined}>
+        {world.units.map((unit, i) => (
+          <button
             key={unit.key}
             className={`${styles.shelfRow} ${at === unit.label ? styles.shelfOn : ""}`}
+            aria-current={at === unit.label ? "location" : undefined}
+            onClick={() => goTo(unit)}
+            title={`walk over to ${unit.label} (${i + 1})`}
           >
             <span className={styles.shelfDot} />
-            {unit.label}
-          </div>
+            <span className={styles.shelfName}>{unit.label}</span>
+            {i < 9 ? <kbd className={styles.shelfKey}>{i + 1}</kbd> : null}
+          </button>
         ))}
-      </div>
+      </nav>
 
       {coarse ? (
         <div className={styles.stick} {...stickHandlers}>
@@ -750,7 +821,7 @@ function RoomScene({
         <span className={styles.hint}>
           {coarse
             ? "drag the pad to walk · drag the room to look · tap what you are aiming at"
-            : "wasd to walk · arrows or mouse to look · e to take something off the shelf"}
+            : `wasd to walk · arrows or mouse to look · e takes it off the shelf · 1–${Math.min(9, world.units.length)} walks you to a shelf`}
         </span>
         <span className={styles.now}>
           {playing
