@@ -188,12 +188,13 @@ export function buildStage(
   };
 
   /* ---------- materials ---------- */
+  // boards in the den, library and cinema; poured stone in the vault and the bank
   const floorMat = keep(
-    new THREE.MeshStandardMaterial({
-      map: woodTexture(p.floor, [7, 8]),
-      roughness: 0.72,
-      metalness: 0.04,
-    }),
+    new THREE.MeshStandardMaterial(
+      venue.floor === "stone"
+        ? { map: plasterTexture(p.floor, [9, 10]), roughness: 0.82, metalness: 0.02 }
+        : { map: woodTexture(p.floor, [7, 8]), roughness: 0.72, metalness: 0.04 },
+    ),
   );
   const wallMat = keep(
     new THREE.MeshStandardMaterial({ map: plasterTexture(p.wall, [5, 2]), roughness: 0.94 }),
@@ -221,7 +222,7 @@ export function buildStage(
   rug.rotation.x = -Math.PI / 2;
   rug.position.set(0, up(G.floorY) + 1, -260);
   rug.receiveShadow = true;
-  scene.add(rug);
+  if (venue.rug) scene.add(rug);
 
   const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(G.roomX * 2, G.frontZ - G.backZ), ceilMat);
   ceiling.rotation.x = Math.PI / 2;
@@ -257,50 +258,115 @@ export function buildStage(
   key.position.set(600, 900, 900);
   scene.add(key);
 
+  /* ---------- the light fittings ----------
+     One light per lamp position whatever the building, with the fitting the
+     building would actually have: a shade on a cord, an iron ring of candle
+     bulbs, a fluorescent tube, a panel in the ceiling, a lamp on the wall. */
   const pendants: { group: THREE.Group; phase: number }[] = [];
+  const glowMat = keep(new THREE.MeshBasicMaterial({ color: new THREE.Color(p.light), toneMapped: false }));
+  const ironMat = keep(new THREE.MeshStandardMaterial({ color: "#16110e", roughness: 0.7, metalness: 0.45 }));
+  const shadeMat = keep(
+    new THREE.MeshStandardMaterial({ color: p.timber, side: THREE.DoubleSide, roughness: 0.5 }),
+  );
+  const roof = up(G.ceilY);
+  const rod = (length: number) => new THREE.Mesh(new THREE.CylinderGeometry(2, 2, length, 6), ironMat);
+
   for (const lamp of world.lamps) {
+    const drop = Math.abs(lamp.y - G.ceilY);
+    const phase = (hash(lamp.key) % 628) / 100;
+    /** where the light itself sits, and how bright it is at this building's scale */
+    let at = new THREE.Vector3(lamp.x, up(lamp.y) - 50, lamp.z);
+    let candela = 1_400_000;
+
+    if (venue.fixture === "pendant" || venue.fixture === "chandelier") {
+      /* It hangs from a pivot at the ceiling rose, so it can sway the way a
+         hanging fitting does in a draught. Only the fitting moves: the light
+         stays put, because its shadows are drawn once and a light that
+         wandered away from them would give the game away. */
+      const fitting = new THREE.Group();
+      fitting.position.set(lamp.x, roof, lamp.z);
+      scene.add(fitting);
+      pendants.push({ group: fitting, phase });
+
+      if (venue.fixture === "pendant") {
+        const shade = new THREE.Mesh(new THREE.ConeGeometry(84, 66, 24, 1, true), shadeMat);
+        shade.position.set(0, -drop, 0);
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(22, 16, 12), glowMat);
+        bulb.position.set(0, -drop - 40, 0);
+        const cord = rod(drop);
+        cord.position.set(0, -drop / 2, 0);
+        fitting.add(shade, bulb, cord);
+      } else {
+        // an iron hoop on four chains, a candle bulb at each of eight points
+        const hang = drop + 50;
+        const radius = 110;
+        const hoop = new THREE.Mesh(new THREE.TorusGeometry(radius, 4, 8, 40), ironMat);
+        hoop.rotation.x = Math.PI / 2;
+        hoop.position.set(0, -hang, 0);
+        fitting.add(hoop);
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          const x = Math.cos(a) * radius;
+          const z = Math.sin(a) * radius;
+          const candle = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 26, 8), ironMat);
+          candle.position.set(x, -hang + 13, z);
+          const flame = new THREE.Mesh(new THREE.SphereGeometry(7, 8, 6), glowMat);
+          flame.scale.y = 1.6;
+          flame.position.set(x, -hang + 32, z);
+          fitting.add(candle, flame);
+          if (i % 2 === 0) {
+            // a chain from the rose to every other candle
+            // oriented in the fitting's own space: lookAt would read a world
+            // matrix nobody has worked out yet
+            const run = new THREE.Vector3(x, -hang, z);
+            const chain = rod(run.length());
+            chain.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), run.clone().normalize());
+            chain.position.copy(run.multiplyScalar(0.5));
+            fitting.add(chain);
+          }
+        }
+        at = new THREE.Vector3(lamp.x, roof - hang + 20, lamp.z);
+      }
+    } else if (venue.fixture === "strip" || venue.fixture === "panel") {
+      // set into the ceiling: a lit face and the housing round it
+      const strip = venue.fixture === "strip";
+      const w = strip ? 46 : 280;
+      const d = strip ? 900 : 280;
+      const housing = new THREE.Mesh(new THREE.BoxGeometry(w + 20, 14, d + 20), ironMat);
+      housing.position.set(lamp.x, roof - 7, lamp.z);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(w, d), glowMat);
+      face.rotation.x = Math.PI / 2;
+      face.position.set(lamp.x, roof - 15, lamp.z);
+      scene.add(housing, face);
+      at = new THREE.Vector3(lamp.x, roof - 60, lamp.z);
+      candela = 1_200_000;
+    } else {
+      // a sconce on the nearer side wall, throwing its light up and down it
+      const side = lamp.x < 0 ? -1 : 1;
+      const wall = side * G.roomX;
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(10, 90, 50), ironMat);
+      plate.position.set(wall - side * 5, 70, lamp.z);
+      const shade = new THREE.Mesh(new THREE.CylinderGeometry(34, 22, 60, 20, 1, true), shadeMat);
+      shade.position.set(wall - side * 40, 80, lamp.z);
+      const lit = new THREE.Mesh(new THREE.CircleGeometry(33, 20), glowMat);
+      lit.rotation.x = -Math.PI / 2;
+      lit.position.set(wall - side * 40, 110, lamp.z);
+      scene.add(plate, shade, lit);
+      at = new THREE.Vector3(wall - side * 90, 110, lamp.z);
+      candela = 700_000;
+    }
+
     /* Intensity is in candela and falls off with the square of the distance,
        so it has to be expressed in the scale the world is actually built at.
        This room is ~2000 units across, not 2000 millimetres: at 700 units a
        decay-2 light is attenuated by 490,000, which is why an intensity of 1
        rendered as pitch black. */
-    const light = new THREE.PointLight(new THREE.Color(p.light), 1_400_000, 5200, 2);
-    light.position.set(lamp.x, up(lamp.y) - 50, lamp.z);
+    const light = new THREE.PointLight(new THREE.Color(p.light), candela, 5200, 2);
+    light.position.copy(at);
     light.castShadow = true;
     light.shadow.mapSize.set(1024, 1024);
     light.shadow.bias = -0.002;
     scene.add(light);
-
-    /* The fitting hangs from a pivot at the ceiling rose, so it can sway
-       the way a pendant does in a draught. Only the fitting moves: the light
-       stays put, because its shadows are drawn once and a light that
-       wandered away from them would give the game away. */
-    const drop = Math.abs(lamp.y - G.ceilY);
-    const fitting = new THREE.Group();
-    fitting.position.set(lamp.x, up(G.ceilY), lamp.z);
-    scene.add(fitting);
-    pendants.push({ group: fitting, phase: hash(lamp.key) % 628 / 100 });
-
-    const shade = new THREE.Mesh(
-      new THREE.ConeGeometry(84, 66, 24, 1, true),
-      keep(new THREE.MeshStandardMaterial({ color: p.timber, side: THREE.DoubleSide, roughness: 0.5 })),
-    );
-    shade.position.set(0, -drop, 0);
-    fitting.add(shade);
-
-    const bulb = new THREE.Mesh(
-      new THREE.SphereGeometry(22, 16, 12),
-      keep(new THREE.MeshBasicMaterial({ color: new THREE.Color(p.light), toneMapped: false })),
-    );
-    bulb.position.set(0, -drop - 40, 0);
-    fitting.add(bulb);
-
-    const cord = new THREE.Mesh(
-      new THREE.CylinderGeometry(2, 2, drop, 6),
-      keep(new THREE.MeshStandardMaterial({ color: "#120d0b", roughness: 1 })),
-    );
-    cord.position.set(0, -drop / 2, 0);
-    fitting.add(cord);
   }
 
   /* ---------- dust in the light ----------

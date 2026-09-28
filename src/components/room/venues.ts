@@ -2,10 +2,10 @@
  * Where you keep it.
  *
  * The same canon, the same shelves, the same walk — a different building. Each
- * venue is a palette and a vocabulary, not a second implementation: the
- * geometry in world.ts is shared, and the surfaces read their colours from CSS
- * custom properties that `[data-venue]` overrides in globals.css. Adding one is
- * a token block and four shelf names.
+ * venue is a palette, a light fitting and a vocabulary, not a second
+ * implementation: the geometry in world.ts is shared, and scene.ts paints the
+ * materials in the palette's colours and hangs the fitting it names. Adding
+ * one is an entry below.
  *
  * They are not decoration for its own sake. A canon meant for your household
  * and a canon meant to outlast you want to *feel* different, and the four tiers
@@ -32,6 +32,23 @@ export type Palette = {
   readonly ambient: number;
 };
 
+/**
+ * What the light hangs from. Five buildings with one pendant lamp between
+ * them were five paint jobs on the same room; the fitting is most of what
+ * says which building you are standing in.
+ */
+export type Fixture =
+  /** a shade on a cord: the den */
+  | "pendant"
+  /** an iron ring of candle bulbs: the library */
+  | "chandelier"
+  /** a fluorescent tube along the ceiling: the vault */
+  | "strip"
+  /** a flat panel set into the ceiling: the seed bank */
+  | "panel"
+  /** a dim lamp on the wall, nothing hanging in your eyeline: the cinema */
+  | "sconce";
+
 export type Venue = {
   readonly id: VenueId;
   /** what the picker calls it */
@@ -43,6 +60,11 @@ export type Venue = {
   /** what the walkable space itself is called, for the HUD */
   readonly noun: string;
   readonly palette: Palette;
+  readonly fixture: Fixture;
+  /** a rug on the floor, or bare floor: concrete and rock take no rug */
+  readonly rug: boolean;
+  /** what you walk on */
+  readonly floor: "boards" | "stone";
 };
 
 export const VENUES: readonly Venue[] = [
@@ -56,6 +78,9 @@ export const VENUES: readonly Venue[] = [
       floor: "#5c3f27", wall: "#4a3627", ceiling: "#1b1512", timber: "#402d1c",
       rugA: "#6d3326", rugB: "#7a3a2b", light: "#ffd9a0", ambient: 0.34,
     },
+    fixture: "pendant",
+    rug: true,
+    floor: "boards",
   },
   {
     id: "library",
@@ -67,6 +92,9 @@ export const VENUES: readonly Venue[] = [
       floor: "#3f2d1d", wall: "#5b5347", ceiling: "#181511", timber: "#2f2018",
       rugA: "#26422f", rugB: "#2d4c39", light: "#ffd79a", ambient: 0.26,
     },
+    fixture: "chandelier",
+    rug: true,
+    floor: "boards",
   },
   {
     id: "vault",
@@ -78,6 +106,9 @@ export const VENUES: readonly Venue[] = [
       floor: "#3a3e43", wall: "#4c5257", ceiling: "#181c1f", timber: "#41474d",
       rugA: "#2c3136", rugB: "#33383d", light: "#cfe4ff", ambient: 0.42,
     },
+    fixture: "strip",
+    rug: false,
+    floor: "stone",
   },
   {
     id: "seedbank",
@@ -89,6 +120,9 @@ export const VENUES: readonly Venue[] = [
       floor: "#455360", wall: "#6d8492", ceiling: "#1a242b", timber: "#4d606c",
       rugA: "#35454f", rugB: "#3c4e59", light: "#e2f4ff", ambient: 0.46,
     },
+    fixture: "panel",
+    rug: false,
+    floor: "stone",
   },
   {
     id: "cinema",
@@ -100,6 +134,9 @@ export const VENUES: readonly Venue[] = [
       floor: "#2c1518", wall: "#34191b", ceiling: "#0f0809", timber: "#2a1315",
       rugA: "#5a1720", rugB: "#661a25", light: "#ffb894", ambient: 0.18,
     },
+    fixture: "sconce",
+    rug: true,
+    floor: "boards",
   },
 ];
 

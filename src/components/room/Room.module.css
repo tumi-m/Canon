@@ -248,7 +248,7 @@
 .hint {
   align-self: center;
   opacity: 0.55;
-  max-width: min(46ch, 90vw);
+  max-width: min(64ch, 60vw);
   text-align: center;
   pointer-events: none !important;
   animation: hintAway 1.2s 14s var(--ease) forwards;

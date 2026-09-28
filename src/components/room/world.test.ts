@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Entry } from "@/lib/schema";
 import { buildWorld, collide, G, nearestUnit, sectionsFor, SLEEVE, viewpointFor } from "./world";
 import { getCanon } from "@/lib/canon";
+import { VENUES } from "./venues";
 
 const entries = getCanon("tumelo")!.entries;
 
@@ -142,6 +143,15 @@ describe("venues", () => {
     const ids = (w: ReturnType<typeof buildWorld>) =>
       w.units.flatMap((u) => u.sleeves.map((s) => s.entry)).sort((a, b) => a - b);
     expect(ids(vault)).toEqual(ids(den));
+  });
+
+  it("gives every building its own light fitting, not just its own paint", () => {
+    const fittings = VENUES.map((v) => v.fixture);
+    expect(new Set(fittings).size).toBe(VENUES.length);
+  });
+
+  it("keeps rugs off concrete and rock", () => {
+    for (const v of VENUES) if (v.floor === "stone") expect(v.rug).toBe(false);
   });
 
   it("falls back to the default name for any the venue leaves out", () => {
