@@ -15,7 +15,7 @@ milestone; update it before finishing one.
 | **M3 · Entries & the text view** | 🟡 the *view* is built and server-rendered; the paste-a-link flow, metadata resolution and reordering are not — they need M1/M2 |
 | **M3.5 · YouTube** | ✅ id parsing, embeds, thumbnails, and the channel dial in the room |
 | **M4 · Availability layer** | 🟡 the shape is built (per-region offers, per-item attribution, no synthesised deep links); the live TMDB fetch and Redis cache are not — **blocked**: needs `TMDB_API_KEY` |
-| **M5 · The room** | ✅ shipping — a den drawn with three.js (moved off CSS 3D), five venues, the television, motion throughout |
+| **M5 · The room** | ✅ shipping — a den drawn with three.js (moved off CSS 3D), five venues with their own fittings and floors, the television, places you can walk to from a list, motion throughout; loaded only when opened |
 | **M6 · Audiences, invites, capsules** | 🟡 the *shapes* exist in `src/lib/schema.ts`; **nothing is enforced** — blocked on M1 |
 | **M7 · Membership** | ⬜ not started — **blocked**: needs Stripe keys |
 | **M8 · Regional archive** | ⬜ not started |
@@ -98,10 +98,15 @@ anything. A capsule that is only sealed in a component is not sealed.
    session — `world.ts` is `+y` down and three.js `+y` up, lights are in
    candela at the room's scale, shadows are drawn once — read those before
    moving anything.
-6. **Commit before you stop.** A whole session's renderer rewrite was once
+6. **The layout is tested against canons of every size, not just the seed
+   one.** `world.test.ts` generates canons from one piece a tier to forty and
+   checks that nothing leaves the room, nothing stands inside anything else
+   and every piece is shelved. When profiles come from the database, that is
+   the test that says a real person's canon will fit.
+7. **Commit before you stop.** A whole session's renderer rewrite was once
    lost uncommitted when the cloud container was reclaimed, and had to be
    rebuilt from the transcript. Push at every green point.
-7. **Two things this environment could not verify.** YouTube's CDN is
+8. **Two things this environment could not verify.** YouTube's CDN is
    unreachable from the sandbox, so no thumbnail and no embed has been *seen*
    to load — the wiring is unit-tested, the network path is not. And frame rate
    on real hardware is still unmeasured: everything has been driven headless,

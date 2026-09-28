@@ -47,7 +47,9 @@ CI runs typecheck → lint → test → build → e2e on every push and PR.
   the tile rather than hidden behind a hover. **The list** is the reading view.
   Both are statically generated, server-rendered, and fully readable with
   javascript switched off — view and region are query params, so any way of
-  looking at a canon is a URL you can send somebody.
+  looking at a canon is a URL you can send somebody. Sent, it unfurls as a
+  card with whose canon it is and the pieces that changed them
+  (`[handle]/opengraph-image.tsx`, drawn at build time with `next/og`).
 - **the room** — somebody's den, opened from a canon and drawn on the GPU:
   a bookcase, shelves along the walls, a record crate on the rug, lamps, dust
   in the light, and a television that plays the canon. Five buildings to keep
@@ -100,14 +102,20 @@ callers.
 
 Not a shop — somebody's den. The canon is shelved the way a collection
 actually lives: a bookcase on the back wall for the ones that changed you,
-shelves along the side walls, a record crate on the rug. Floorboards, a rug,
-two pendant lamps, dust drifting through their light.
+shelves along the side walls, a record crate on the rug, a set on a
+sideboard, and the capsule — a strongbox with a brass plate — in the back
+corner. Dust drifts through the lamplight.
+
+The room's code is loaded only when someone presses "step into the room"
+(and fetched the moment a hand hovers on the way there), so a canon page
+does not make every visitor download three.js to read a list.
 
 | | |
 |---|---|
 | walk | `W A S D`, the on-screen pad, or the stick on a touch screen |
 | look | arrow keys; or click to capture the mouse, or drag; touch drags to look |
 | take something off the shelf | `E` / `Enter`, click while the reticle is on it, or tap the label on touch |
+| go somewhere | click a place in the list top right, or press its number — `1`–`4` the shelves, then the set and the capsule |
 | watch full size | `T`, or look at the set and press `E` |
 | change channel | `[` and `]` · `M` mutes |
 | leave | `Esc`, or the button top-left. `Esc` unwinds one layer at a time |
@@ -115,10 +123,13 @@ two pendant lamps, dust drifting through their light.
 **How it is put together.** It is three.js (`three@0.181`, the one
 dependency the room adds), in four files:
 
-- `world.ts` — the model, as pure functions: where every shelf and sleeve
-  sits, the collision boxes, which shelf you are nearest. Unit-tested without
-  a browser. It is the same model the CSS-3D room used; the renderer swap did
-  not touch a line of the layout or its tests.
+- `world.ts` — the model, as pure functions: where every shelf, sleeve, the
+  set and the capsule sit, the collision boxes, which shelf you are nearest,
+  and where to stand to see any of them whole on this screen. Unit-tested
+  without a browser, including against generated canons of every size from
+  one piece a tier to forty — a tier bigger than its spot can hold at full
+  size gets smaller cases, never a bookcase through the ceiling or into the
+  set.
 - `scene.ts` — turns the model into meshes and lights, and owns everything
   that moves on its own (dust, the pendants' sway, the capsule's glow, the
   set's flicker, a case easing off its shelf) behind one `tick(t, dt)`.
@@ -142,8 +153,9 @@ session:
    seam between two cases; a gap between cases is somewhere to stand square
    in front of a bookcase and aim at nothing.
 4. **Shadows are drawn once.** Nothing that casts one ever moves, and each
-   lamp's shadow is a cube map — six extra renders of the room. The pendants
-   sway, but only their fittings; the lights stay where their shadows are.
+   lamp's shadow is a cube map — six extra renders of the room. Hanging
+   fittings sway, but only the fittings; the lights stay where their shadows
+   are.
 5. **Resolution follows the frame rate.** A machine that cannot hold ~30fps
    draws fewer pixels (down to 0.6×) until it can, and earns them back.
 
@@ -171,7 +183,10 @@ Three deliberate constraints:
   hear properly across a room is not worth pretending with. The picture
   lights the room the way a screen does; the playing happens full size.
 
-A link with no video — a Wikipedia page, a film — gets no channel.
+A link with no video — a Wikipedia page, a film — gets no channel. Switched
+off, the set's glass says what it is for and how many channels it has; a
+canon with nothing embeddable says "no signal" and the watch controls say
+why they are unavailable.
 
 ### Where you keep it
 
@@ -181,12 +196,19 @@ vault** (steel and concrete), **the seed bank** (cold storage cut into rock),
 **the cinema** (one screen in the dark). Pick before you go in, or change
 without leaving.
 
-A venue is a palette and a vocabulary, not a second implementation. The
-geometry in `world.ts` is shared; each venue in `venues.ts` carries the colours
-the materials are painted in and how hard the room is lit, and the four
-weight tiers get renamed in the building's own words — *the ones that changed
-me* in the den is *sealed* in the vault and *the seed stock* in the bank.
-Adding one is a palette and four names.
+Each hangs the light it would actually have and stands on what it would be
+built on: a shade on a cord over boards and a rug in the den, an iron hoop
+of candle bulbs in the library, fluorescent tubes over bare stone in the
+vault, panels set into the ceiling of the seed bank, and dim sconces on the
+cinema's walls with nothing hanging in your eyeline.
+
+A venue is a palette, a fitting, a floor and a vocabulary, not a second
+implementation. The geometry in `world.ts` is shared; each venue in
+`venues.ts` carries the colours the materials are painted in, how hard the
+room is lit, what the light hangs from and what you walk on, and the four
+weight tiers get renamed in the building's own words — *the ones that
+changed me* in the den is *sealed* in the vault and *the seed stock* in the
+bank. Adding one is an entry in that list.
 
 ### Watching
 

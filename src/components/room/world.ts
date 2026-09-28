@@ -48,10 +48,11 @@ export type Furniture = "shelf" | "crate";
  * read as a display stand rather than a collection — and left a void wide
  * enough to stand in front of and see nothing at all.
  *
- * Exported so the renderer and the layout test read the same numbers instead
- * of each carrying its own copy.
+ * A unit copies these into its own `slot` — scaled down if its tier has
+ * more pieces than its spot can hold at full size — and the renderer and the
+ * tests read the unit's, so nobody carries a second copy of these numbers.
  */
-export const SLEEVE: Record<Furniture, { w: number; h: number; cols: number }> = {
+const SLEEVE: Record<Furniture, { w: number; h: number; cols: number }> = {
   // a bookcase of standing cases: pitch 160 × 214, near enough a poster
   shelf: { w: 148, h: 214, cols: 5 },
   // a floor crate you flip through: square, the way a record sleeve is
@@ -85,6 +86,12 @@ export type Unit = {
   readonly width: number;
   readonly height: number;
   readonly rows: number;
+  /**
+   * The pitch each sleeve on this unit actually occupies. SLEEVE's numbers,
+   * unless the tier had more pieces than the spot could hold at full size,
+   * in which case every case on it is smaller by the same factor.
+   */
+  readonly slot: { readonly w: number; readonly h: number };
   readonly sleeves: readonly Sleeve[];
 };
 
@@ -201,17 +208,39 @@ function makeUnit(
   furniture: Furniture,
   entries: readonly number[],
   at: { x: number; y: number; z: number; rot: number; tilt?: number },
+  /** the room this spot has: how wide the unit may grow, and how tall */
+  room: { maxWidth: number; maxHeight: number },
 ): Unit | null {
   const count = entries.length;
   if (count === 0) return null;
 
   const spec = SLEEVE[furniture];
-  // a shelf holding one thing is one slot wide; it used to be padded out to
-  // two, which built a half-empty crate around a single record
-  const cols = Math.min(spec.cols, count > spec.cols ? Math.ceil(count / 2) : count);
+  const frame = 2 * (PAD + BORDER);
+
+  /* How big a case can be at a given number of columns, as a fraction of
+     full size: whatever the width and the height of the spot both allow. */
+  const fits = (cols: number) => {
+    const rows = Math.ceil(count / cols);
+    const across = (room.maxWidth - frame - (cols - 1) * GAP) / (cols * spec.w);
+    const down = (room.maxHeight - frame - (rows - 1) * GAP) / (rows * spec.h);
+    return Math.min(1, across, down);
+  };
+
+  /* The layout it has always had — one row until it outgrows spec.cols, then
+     two — as long as that fits the spot at full size. A tier bigger than that
+     used to keep adding rows until the bookcase went through the floor and the
+     ceiling, or keep adding columns until it ran into the set beside it. Past
+     that point, take whichever column count keeps the cases largest. */
+  const preferred = Math.max(1, Math.min(spec.cols, count > spec.cols ? Math.ceil(count / 2) : count));
+  let cols = preferred;
+  if (fits(preferred) < 1) {
+    for (let c = 1; c <= count; c++) if (fits(c) > fits(cols) + 1e-9) cols = c;
+  }
+  const scale = fits(cols);
+  const slot = { w: spec.w * scale, h: spec.h * scale };
   const rows = Math.ceil(count / cols);
-  const width = cols * spec.w + (cols - 1) * GAP + 2 * (PAD + BORDER);
-  const height = rows * spec.h + (rows - 1) * GAP + 2 * (PAD + BORDER);
+  const width = cols * slot.w + (cols - 1) * GAP + frame;
+  const height = rows * slot.h + (rows - 1) * GAP + frame;
 
   const theta = (at.rot * Math.PI) / 180;
   const cos = Math.cos(theta);
@@ -221,10 +250,10 @@ function makeUnit(
   for (let i = 0; i < count; i++) {
     const col = i % cols;
     const row = Math.floor(i / cols);
-    const left = BORDER + PAD + col * (spec.w + GAP);
-    const top = BORDER + PAD + row * (spec.h + GAP);
-    const lx = left + spec.w / 2 - width / 2;
-    const ly = top + spec.h / 2 - height / 2;
+    const left = BORDER + PAD + col * (slot.w + GAP);
+    const top = BORDER + PAD + row * (slot.h + GAP);
+    const lx = left + slot.w / 2 - width / 2;
+    const ly = top + slot.h / 2 - height / 2;
     sleeves.push({
       key: `${key}-${i}`,
       entry: entries[i]!,
@@ -248,6 +277,7 @@ function makeUnit(
     width,
     height,
     rows,
+    slot,
     sleeves,
   };
 }
@@ -265,17 +295,25 @@ export function buildWorld(
    * back wall — the one you walk in facing — and the rest fill the room in the
    * order you meet them.
    */
+  /* Each spot says how much room it has. The back wall stops short of the
+     capsule standing in its corner; the right-hand wall stops short of the
+     set; a crate is waist height at most. A bookcase's height is whatever
+     the room leaves between its middle and the nearer of floor and ceiling. */
+  const tall = (y: number) => 2 * Math.min(y - G.ceilY, G.floorY - y) - 8;
   const spots = [
-    { furniture: "shelf" as const, x: 0, y: -60, z: G.backZ + 80, rot: 0, tilt: 0 },
-    { furniture: "shelf" as const, x: -(G.roomX - 30), y: -60, z: -760, rot: 90, tilt: 0 },
-    { furniture: "shelf" as const, x: G.roomX - 30, y: -60, z: -760, rot: -90, tilt: 0 },
-    { furniture: "crate" as const, x: -430, y: 150, z: -120, rot: 20, tilt: -16 },
-    { furniture: "crate" as const, x: 450, y: 150, z: -170, rot: -24, tilt: -16 },
+    { furniture: "shelf" as const, x: 0, y: -50, z: G.backZ + 80, rot: 0, tilt: 0, maxWidth: 1000 },
+    { furniture: "shelf" as const, x: -(G.roomX - 30), y: -50, z: -760, rot: 90, tilt: 0, maxWidth: 1000 },
+    { furniture: "shelf" as const, x: G.roomX - 30, y: -50, z: -760, rot: -90, tilt: 0, maxWidth: 690 },
+    { furniture: "crate" as const, x: -430, y: 150, z: -120, rot: 20, tilt: -16, maxWidth: 520 },
+    { furniture: "crate" as const, x: 450, y: 150, z: -170, rot: -24, tilt: -16, maxWidth: 520 },
   ];
 
   sections.forEach((section, i) => {
     const spot = spots[i % spots.length]!;
-    const unit = makeUnit(`s${i}`, section.name, spot.furniture, section.entries, spot);
+    const unit = makeUnit(`s${i}`, section.name, spot.furniture, section.entries, spot, {
+      maxWidth: spot.maxWidth,
+      maxHeight: spot.furniture === "crate" ? 320 : tall(spot.y),
+    });
     if (!unit) return;
     if (unit.furniture === "crate") {
       // a crate stands on the floor. its height is not known until its stock is

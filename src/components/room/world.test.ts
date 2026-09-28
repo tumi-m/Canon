@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Entry } from "@/lib/schema";
-import { buildWorld, collide, G, nearestUnit, sectionsFor, SLEEVE, viewpointFor } from "./world";
+import { buildWorld, collide, G, nearestUnit, sectionsFor, viewpointFor } from "./world";
 import { getCanon } from "@/lib/canon";
 import { VENUES } from "./venues";
 
@@ -53,7 +53,7 @@ describe("buildWorld", () => {
     // drawn at, or the reticle points somewhere the sleeve is not
     for (const unit of world.units) {
       const theta = (unit.rot * Math.PI) / 180;
-      const w = SLEEVE[unit.furniture].w;
+      const w = unit.slot.w;
       for (const s of unit.sleeves) {
         const lx = s.left + w / 2 - unit.width / 2;
         expect(s.x).toBeCloseTo(unit.fx + lx * Math.cos(theta), 6);
@@ -201,6 +201,52 @@ describe("viewpointFor", () => {
   it("puts the back bookcase straight ahead of the door", () => {
     const back = world.units[0]!;
     expect(viewpointFor(back, world).yaw).toBeCloseTo(0, 6);
+  });
+});
+
+describe("a canon of any size", () => {
+  /** a canon with a given number of pieces on each tier */
+  const canonOf = (changed: number, great: number, solid: number, picks = 0): Entry[] => {
+    const make = (weight: 1 | 2 | 3, n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        ...entry(weight, weight === 3 && i < picks),
+        work: { id: `${weight}-${i}`, kind: "youtube" as const, title: `t${weight}-${i}`, url: "https://e.com", runtime: "1m" },
+      }));
+    return [...make(3, changed), ...make(2, great), ...make(1, solid)];
+  };
+
+  const sizes: [number, number, number, number][] = [];
+  for (const n of [1, 2, 4, 5, 6, 9, 10, 11, 16, 24, 40]) {
+    sizes.push([n, 0, 0, 0], [0, n, 0, 0], [3, n, 2, 1], [n, n, n, Math.min(n, 6)]);
+  }
+
+  it.each(sizes)("fits %i / %i / %i (picks %i) inside the room", (a, b, c, d) => {
+    const world = buildWorld(canonOf(a, b, c, d));
+    for (const unit of world.units) {
+      const top = unit.fy - unit.height / 2;
+      const bottom = unit.fy + unit.height / 2;
+      // +y is down: the ceiling is the smaller number
+      expect(top, `${unit.label} goes through the ceiling`).toBeGreaterThanOrEqual(G.ceilY);
+      expect(bottom, `${unit.label} goes through the floor`).toBeLessThanOrEqual(G.floorY);
+      expect(Math.abs(unit.fx) + (unit.rot === 0 ? unit.width / 2 : 0)).toBeLessThanOrEqual(G.roomX);
+    }
+  });
+
+  it.each(sizes)("stands nothing inside anything else at %i / %i / %i (picks %i)", (a, b, c, d) => {
+    const { boxes } = buildWorld(canonOf(a, b, c, d));
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const [p, q] = [boxes[i]!, boxes[j]!];
+        const overlap = p.x0 < q.x1 && p.x1 > q.x0 && p.z0 < q.z1 && p.z1 > q.z0;
+        expect(overlap, `box ${i} and box ${j} overlap`).toBe(false);
+      }
+    }
+  });
+
+  it.each(sizes)("shelves every piece at %i / %i / %i (picks %i)", (a, b, c, d) => {
+    const entries = canonOf(a, b, c, d);
+    const shelved = new Set(buildWorld(entries).units.flatMap((u) => u.sleeves.map((s) => s.entry)));
+    for (let i = 0; i < entries.length; i++) expect(shelved.has(i), `piece ${i} is nowhere`).toBe(true);
   });
 });
 

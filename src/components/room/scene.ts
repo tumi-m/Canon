@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { Entry } from "@/lib/schema";
 import { channelsFrom, thumbnailForEntry } from "@/lib/youtube";
-import { G, GAP, hash, SLEEVE, type Unit, type World } from "./world";
+import { G, GAP, hash, type Unit, type World } from "./world";
 import type { Venue } from "./venues";
 import {
   coverTexture,
@@ -429,7 +429,7 @@ export function buildStage(
     group.rotation.x = up(unit.tilt * Math.PI) / 180;
     scene.add(group);
 
-    const slot = SLEEVE[unit.furniture];
+    const slot = unit.slot;
     /* A case fills its slot *and* its gap, so neighbours touch. Anything less
        leaves a seam you can stand square in front of and aim straight through
        — the reticle is a real ray, and a real ray goes between two objects

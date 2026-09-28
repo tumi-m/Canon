@@ -241,6 +241,18 @@ test.describe("watching and leaving", () => {
   });
 });
 
+test.describe("with less motion asked for", () => {
+  test.use({ reducedMotion: "reduce" });
+
+  test("picking a place still takes you there", async ({ page }) => {
+    // with reduced motion there is no walk: a separate path puts you there on
+    // the next frame, and a separate path is one that can quietly break
+    await openRoom(page);
+    await page.keyboard.press("3");
+    await expect(page.locator("[class*=now]")).toHaveText("the good shelf", { timeout: 20_000 });
+  });
+});
+
 test.describe("on a touch screen", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
