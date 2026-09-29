@@ -1,9 +1,11 @@
 import * as THREE from "three";
 import type { Entry } from "@/lib/schema";
 import { channelsFrom, thumbnailForEntry } from "@/lib/youtube";
-import { G, GAP, hash, type Unit, type World } from "./world";
+import { G, GAP, hash, type Accepts, type Unit, type World } from "./world";
 import type { Venue } from "./venues";
 import {
+  boardTexture,
+  signTexture,
   coverTexture,
   disposeTextures,
   plaqueTexture,
@@ -40,12 +42,14 @@ const FAR = 9000;
 const up = (worldY: number) => -worldY;
 
 export type Hit = {
-  readonly kind: "sleeve" | "capsule" | "tv";
+  readonly kind: "sleeve" | "capsule" | "tv" | "sign";
   readonly key: string;
   readonly entry: number | null;
   readonly label: string;
   /** the shelf this sits on — or the set, or the capsule — for the "where you are" badge */
   readonly shelf: string | null;
+  /** a sign: what a piece added from it is filed as */
+  readonly accepts?: Accepts;
 };
 
 /** The set is off, or on a channel — with its artwork once that arrives. */
@@ -429,6 +433,28 @@ export function buildStage(
     group.rotation.x = up(unit.tilt * Math.PI) / 180;
     scene.add(group);
 
+    /* The shelf's name board, and the place to add to it. A bookcase's
+       hangs under it — there is no headroom above one — and a crate's stands
+       up out of it, like a card pushed in among the records. */
+    const crate = unit.furniture === "crate";
+    const signW = Math.min(unit.width - 30, crate ? 300 : 480);
+    const signFace = keep(new THREE.MeshStandardMaterial({ map: keep(signTexture(unit.label, p.timber)), roughness: 0.6 }));
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(signW, signW * (150 / 1024), 8), [
+      timberMat, timberMat, timberMat, timberMat, signFace, timberMat,
+    ]);
+    const signDepth = crate ? 74 : 150;
+    sign.position.set(0, crate ? unit.height / 2 + 34 : -unit.height / 2 - 44, signDepth / 2 - 6);
+    sign.userData["hit"] = {
+      kind: "sign",
+      key: `sign-${unit.key}`,
+      entry: null,
+      label: `add to ${unit.label}`,
+      shelf: unit.label,
+      accepts: unit.accepts,
+    } satisfies Hit;
+    group.add(sign);
+    targets.push(sign);
+
     const slot = unit.slot;
     /* A case fills its slot *and* its gap, so neighbours touch. Anything less
        leaves a seam you can stand square in front of and aim straight through
@@ -543,6 +569,36 @@ export function buildStage(
   const glow = new THREE.PointLight(new THREE.Color("#9fd4ff"), 0, 3000, 2);
   glow.position.set(set.x - 160, TV_Y, set.z);
   scene.add(glow);
+
+  /* ---------- the noticeboard ---------- */
+  const { board } = world;
+  const boardGroup = new THREE.Group();
+  boardGroup.position.set(board.fx, up(board.fy), board.fz);
+  boardGroup.rotation.y = (board.rot * Math.PI) / 180;
+  const boardFace = keep(new THREE.MeshStandardMaterial({ map: keep(boardTexture()), roughness: 0.85 }));
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(board.width, board.height, 14), [
+    timberMat, timberMat, timberMat, timberMat, boardFace, timberMat,
+  ]);
+  panel.castShadow = true;
+  panel.userData["hit"] = {
+    kind: "sign",
+    key: "__board",
+    entry: null,
+    label: board.label,
+    shelf: board.label,
+    accepts: { weight: 3, highlighted: false },
+  } satisfies Hit;
+  boardGroup.add(panel);
+  // an easel's legs, from the floor to under the board
+  const legLength = board.height / 2 + (G.floorY - board.fy);
+  for (const side of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(14, legLength, 14), timberMat);
+    leg.position.set(side * (board.width / 2 - 30), board.height / 2 - legLength / 2, -14);
+    leg.castShadow = true;
+    boardGroup.add(leg);
+  }
+  scene.add(boardGroup);
+  targets.push(panel);
 
   /* ---------- the capsule ---------- */
   /* A strongbox standing on the floor, its face a brass plate and a seal.

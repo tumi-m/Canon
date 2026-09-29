@@ -8,6 +8,7 @@ import CanonList from "@/components/CanonList";
 import CanonGallery from "@/components/CanonGallery";
 import ViewSwitch from "@/components/ViewSwitch";
 import RoomLauncher from "@/components/RoomLauncher";
+import { DraftShelf } from "@/components/AddLink";
 import styles from "./page.module.css";
 
 type Params = { handle: string };
@@ -93,10 +94,14 @@ export default async function CanonPage({
             region={region}
             services={Object.keys(PROVIDERS)}
             displayName={canon.displayName}
+            handle={canon.handle}
             listHref={`/${canon.handle}?region=${region}&view=list`}
           />
         </div>
       </section>
+
+      {/* adding to it: a draft in this browser until sign-in exists */}
+      <DraftShelf handle={canon.handle} />
 
       <div id="canon-view" className={styles.viewAnchor}>
         <ViewSwitch handle={canon.handle} region={region} view={view} />

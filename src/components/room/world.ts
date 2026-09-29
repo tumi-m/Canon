@@ -1,4 +1,4 @@
-import type { Entry } from "@/lib/schema";
+import type { Entry, Weight } from "@/lib/schema";
 
 /**
  * The room, as data.
@@ -75,6 +75,8 @@ export type Sleeve = Aim & {
 export type Unit = {
   readonly key: string;
   readonly label: string;
+  /** what the sign under it files a new piece as */
+  readonly accepts: Accepts;
   readonly furniture: Furniture;
   readonly fx: number;
   readonly fy: number;
@@ -106,7 +108,15 @@ export type Box = { x0: number; x1: number; z0: number; z1: number };
  */
 export type Lamp = { key: string; x: number; y: number; z: number };
 
-export type Section = { readonly name: string; readonly entries: readonly number[] };
+/** What a shelf takes: its tier, and whether it is the played-to-death shelf. */
+export type Accepts = { readonly weight: Weight; readonly highlighted: boolean };
+
+export type Section = {
+  readonly name: string;
+  readonly entries: readonly number[];
+  /** what its sign files a new piece under */
+  readonly accepts: Accepts;
+};
 
 /**
  * The television and the sideboard it stands on, against the right-hand wall.
@@ -133,7 +143,7 @@ export type Face = Pick<Unit, "fx" | "fy" | "fz" | "rot" | "width" | "height"> &
 };
 
 /** A place in the room that is not a shelf, but that you might want to go to. */
-export type Feature = Face & { readonly key: "set" | "capsule"; readonly label: string };
+export type Feature = Face & { readonly key: "set" | "capsule" | "board"; readonly label: string };
 
 export type World = {
   readonly sections: readonly Section[];
@@ -146,6 +156,8 @@ export type World = {
   readonly capsule: Feature;
   /** the set's screen, where you look when you look at it */
   readonly screen: Feature;
+  /** the noticeboard by the door: where you pin something new to the shelves */
+  readonly board: Feature;
   readonly bounds: { xMin: number; xMax: number; zMin: number; zMax: number };
 };
 
@@ -184,15 +196,21 @@ export function sectionsFor(
   const picks = entries.flatMap((e, i) => (e.highlighted ? [i] : []));
 
   const all: Section[] = [
-    { name: names[0] ?? DEFAULT_SHELF_NAMES[0], entries: byWeight(3) },
-    { name: names[1] ?? DEFAULT_SHELF_NAMES[1], entries: picks },
-    { name: names[2] ?? DEFAULT_SHELF_NAMES[2], entries: byWeight(2) },
-    { name: names[3] ?? DEFAULT_SHELF_NAMES[3], entries: byWeight(1) },
+    { name: names[0] ?? DEFAULT_SHELF_NAMES[0], entries: byWeight(3), accepts: { weight: 3, highlighted: false } },
+    { name: names[1] ?? DEFAULT_SHELF_NAMES[1], entries: picks, accepts: { weight: 3, highlighted: true } },
+    { name: names[2] ?? DEFAULT_SHELF_NAMES[2], entries: byWeight(2), accepts: { weight: 2, highlighted: false } },
+    { name: names[3] ?? DEFAULT_SHELF_NAMES[3], entries: byWeight(1), accepts: { weight: 1, highlighted: false } },
   ];
   const stocked = all.filter((s) => s.entries.length > 0);
   return stocked.length > 0
     ? stocked
-    : [{ name: "the shelf", entries: entries.map((_, i) => i) }];
+    : [
+        {
+          name: "the shelf",
+          entries: entries.map((_, i) => i),
+          accepts: { weight: 3, highlighted: false },
+        },
+      ];
 }
 
 /**
@@ -205,6 +223,7 @@ export function sectionsFor(
 function makeUnit(
   key: string,
   label: string,
+  accepts: Accepts,
   furniture: Furniture,
   entries: readonly number[],
   at: { x: number; y: number; z: number; rot: number; tilt?: number },
@@ -268,6 +287,7 @@ function makeUnit(
   return {
     key,
     label,
+    accepts,
     furniture,
     fx: at.x,
     fy: at.y,
@@ -310,7 +330,7 @@ export function buildWorld(
 
   sections.forEach((section, i) => {
     const spot = spots[i % spots.length]!;
-    const unit = makeUnit(`s${i}`, section.name, spot.furniture, section.entries, spot, {
+    const unit = makeUnit(`s${i}`, section.name, section.accepts, spot.furniture, section.entries, spot, {
       maxWidth: spot.maxWidth,
       maxHeight: spot.furniture === "crate" ? 320 : tall(spot.y),
     });
@@ -344,6 +364,26 @@ export function buildWorld(
   }
 
   const set: TvSet = { x: G.roomX - 90, z: 70, length: 820, depth: 170 };
+
+  /* The noticeboard stands a few steps in from the door, at the left edge of
+     what you see as you come in and turned towards you: there to be found,
+     not standing in front of the shelves. */
+  const board: Feature = {
+    key: "board",
+    label: "the noticeboard",
+    fx: -470,
+    fy: G.floorY - 320,
+    fz: 150,
+    rot: 30,
+    width: 260,
+    height: 190,
+  };
+  {
+    const t = (board.rot * Math.PI) / 180;
+    const dx = Math.abs(Math.cos(t)) * (board.width / 2) + 30;
+    const dz = Math.abs(Math.sin(t)) * (board.width / 2) + 30;
+    boxes.push({ x0: board.fx - dx, x1: board.fx + dx, z0: board.fz - dz, z1: board.fz + dz });
+  }
   boxes.push({
     x0: set.x - set.depth / 2,
     x1: set.x + set.depth / 2,
@@ -365,6 +405,7 @@ export function buildWorld(
     set,
     boxes,
     hatchZ: G.backZ + 60,
+    board,
     capsule: {
       key: "capsule",
       label: "the capsule",

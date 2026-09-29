@@ -115,7 +115,8 @@ does not make every visitor download three.js to read a list.
 | walk | `W A S D`, the on-screen pad, or the stick on a touch screen |
 | look | arrow keys; or click to capture the mouse, or drag; touch drags to look |
 | take something off the shelf | `E` / `Enter`, click while the reticle is on it, or tap the label on touch |
-| go somewhere | click a place in the list top right, or press its number — `1`–`4` the shelves, then the set and the capsule |
+| go somewhere | click a place in the list top right, or press its number — `1`–`4` the shelves, then the set, the capsule and the noticeboard |
+| add something | look at a shelf's name board or the noticeboard and press `E` |
 | watch full size | `T`, or look at the set and press `E` |
 | change channel | `[` and `]` · `M` mutes |
 | leave | `Esc`, or the button top-left. `Esc` unwinds one layer at a time |
@@ -163,6 +164,26 @@ The room pauses — it is not torn down — behind the big screen, and a venue
 change rebuilds it around you rather than walking you back to the door. The
 materials take a second or two to paint, so a curtain with the owner's name
 on it covers the build and lifts once there is something to see.
+
+### Adding to it
+
+There are two ways in. On the page, **+ add a link** sits above the wall. In
+the room, every shelf has a name board hanging under it — *the ones that
+changed me · + add something here* — and a noticeboard stands by the door;
+look at either and press `E` (or tap) and the same form opens, already on
+that shelf.
+
+The form takes a link, a title, a why and a shelf, and is validated with
+`newLinkSchema` in `src/lib/drafts.ts`: web links only, a why capped at the
+same 200 characters the database will enforce. A YouTube link becomes a
+channel on the set.
+
+**Where it goes, honestly:** saving to a canon needs the database and
+sign-in, which are the next milestones. Until then what you add is a
+*draft* kept in this browser only — it shows up on the shelves in the room
+and in an "on this device" list on the page, marked as a draft on its cover,
+its card and the list, and it can be removed. Nobody else sees it, and
+nothing claims it has been saved to the canon.
 
 ### The television
 

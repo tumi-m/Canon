@@ -371,3 +371,92 @@ export function plaqueTexture(timber: string): THREE.Texture {
   texture.anisotropy = 8;
   return texture;
 }
+
+/**
+ * The name board under a shelf: which shelf it is, and that you can add to
+ * it. The shelves had no names in the room at all — only in the hud.
+ */
+export function signTexture(name: string, timber: string): THREE.Texture {
+  const w = 1024;
+  const h = 150;
+  const ctx = surface(w, h);
+  ctx.fillStyle = timber;
+  ctx.fillRect(0, 0, w, h);
+  // a painted board: a lighter field inside a darker edge
+  ctx.fillStyle = "rgba(255,240,215,0.1)";
+  ctx.fillRect(8, 8, w - 16, h - 16);
+  ctx.strokeStyle = "rgba(0,0,0,0.45)";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(8, 8, w - 16, h - 16);
+  setLines(
+    ctx,
+    [
+      { text: name, size: 50, colour: "#f3e3c3", font: "serif" },
+      { text: "+ add something here", size: 26, colour: "#ff9a7a", gap: 4 },
+    ],
+    w,
+    h,
+  );
+  const texture = new THREE.CanvasTexture(ctx.canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+/**
+ * The noticeboard by the door: cork, a pinned card, and what to do with it.
+ */
+export function boardTexture(): THREE.Texture {
+  const w = 640;
+  const h = 470;
+  const ctx = surface(w, h);
+  // cork
+  ctx.fillStyle = "#9c7448";
+  ctx.fillRect(0, 0, w, h);
+  const r = rand(71);
+  for (let i = 0; i < 2600; i++) {
+    ctx.fillStyle = `rgba(${r() > 0.5 ? "60,36,14" : "220,180,120"},${0.08 + r() * 0.12})`;
+    ctx.fillRect(r() * w, r() * h, 1 + r() * 3, 1 + r() * 3);
+  }
+  // the card
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(-0.03);
+  ctx.fillStyle = "#f6ecd6";
+  ctx.shadowColor = "rgba(0,0,0,0.35)";
+  ctx.shadowBlur = 16;
+  ctx.shadowOffsetY = 6;
+  ctx.fillRect(-230, -160, 460, 320);
+  ctx.shadowColor = "transparent";
+  ctx.translate(-230, -160);
+  setLines(
+    ctx,
+    [
+      { text: "add something", size: 48, colour: "#2a2118", font: "serif" },
+      { text: "to the shelves", size: 48, colour: "#2a2118", font: "serif" },
+      { text: "a video · a film · a record · an essay", size: 20, colour: "#6b5a44", gap: 18 },
+      { text: "E  or tap", size: 24, colour: "#c8402a", gap: 22 },
+    ],
+    460,
+    320,
+  );
+  ctx.restore();
+  // pins
+  for (const [x, y] of [
+    [w / 2 - 200, h / 2 - 140],
+    [w / 2 + 200, h / 2 - 150],
+  ] as const) {
+    ctx.fillStyle = "#c8402a";
+    ctx.beginPath();
+    ctx.arc(x, y, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.beginPath();
+    ctx.arc(x - 4, y - 4, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const texture = new THREE.CanvasTexture(ctx.canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}

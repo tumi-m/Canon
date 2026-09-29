@@ -2,9 +2,10 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Entry, Region } from "@/lib/schema";
 import { DEFAULT_VENUE, VENUES, type VenueId } from "./room/venues";
+import { useDrafts } from "./AddLink";
 import styles from "./RoomLauncher.module.css";
 
 /** the room's code, fetched once: on the first hover, focus or press */
@@ -36,6 +37,7 @@ export default function RoomLauncher({
   region,
   services,
   displayName,
+  handle,
   listHref,
   label = "▶ step into the room",
 }: {
@@ -43,11 +45,17 @@ export default function RoomLauncher({
   region: Region;
   services: readonly string[];
   displayName: string;
+  /** whose canon: what drafts added here are kept under */
+  handle: string;
   /** where "read it as a list" goes: this canon, this region, the list view */
   listHref: string;
   label?: string;
 }) {
   const router = useRouter();
+  // what somebody has added on this device goes on the shelves too, marked as drafts
+  const { drafts, add } = useDrafts(handle);
+  // one array per change of drafts — a new one every render would rebuild the room every render
+  const shelved = useMemo(() => (drafts.length ? [...entries, ...drafts] : entries), [entries, drafts]);
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [venue, setVenue] = useState<VenueId>(DEFAULT_VENUE);
@@ -86,7 +94,8 @@ export default function RoomLauncher({
       ) : null}
       {open ? (
         <Room
-          entries={entries}
+          entries={shelved}
+          onAdd={add}
           region={region}
           services={services}
           displayName={displayName}

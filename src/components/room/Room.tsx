@@ -11,6 +11,9 @@ import { createRoomSound, STRIDE, type RoomSound } from "@/lib/roomSound";
 import { artFor, buildWorld, collide, G, nearestUnit, viewpointFor, type Face, type Pose } from "./world";
 import { buildStage, hitOf, type Hit, type Screen, type Stage } from "./scene";
 import { VENUES, venueById, type VenueId } from "./venues";
+import { AddLinkForm } from "../AddLink";
+import { isDraft, type newLinkSchema } from "@/lib/drafts";
+import type { Accepts } from "./world";
 import styles from "./Room.module.css";
 
 type Props = {
@@ -22,6 +25,8 @@ type Props = {
   onVenue: (venue: VenueId) => void;
   onLeave: () => void;
   onBrowseList: () => void;
+  /** keep something added from a sign in the room; false if it could not be kept */
+  onAdd: (link: ReturnType<typeof newLinkSchema.parse>) => boolean;
 };
 
 /** Everything the frame loop mutates, kept out of React state. */
@@ -104,7 +109,7 @@ export default function Room(props: Props) {
 
 function RoomScene({
   entries, region, services, displayName, venue, onVenue,
-  onLeave, onBrowseList, host, opener,
+  onLeave, onBrowseList, onAdd, host, opener,
 }: Props & { host: HTMLElement; opener: React.RefObject<HTMLElement | null> }) {
   const place = useMemo(() => venueById(venue), [venue]);
   const world = useMemo(() => buildWorld(entries, place.shelves), [entries, place]);
@@ -126,6 +131,8 @@ function RoomScene({
   const [theatre, setTheatre] = useState(false);
   /** the capsule's card: what it is, and why it stays shut */
   const [capsule, setCapsule] = useState(false);
+  /** adding something from a sign: the shelf it starts on */
+  const [adding, setAdding] = useState<Accepts | null>(null);
   /** the room is drawn on the gpu; say which of the three states it is in */
   const [gl, setGl] = useState<"loading" | "ready" | "failed">("loading");
   /** the curtain stays down while the room builds, then lifts rather than vanishing */
@@ -183,7 +190,9 @@ function RoomScene({
   );
 
   const providerFor = useCallback(
-    (entry: Entry) => offersFor(entry.work.id, region)[0]?.provider.name ?? "—",
+    (entry: Entry) =>
+      // a draft says so on its own cover, so it is never mistaken for the canon
+      isDraft(entry) ? "draft · this device" : (offersFor(entry.work.id, region)[0]?.provider.name ?? "—"),
     [region],
   );
 
@@ -194,6 +203,11 @@ function RoomScene({
          of somebody's den for looking at the one thing in it that waits */
       if (hit.kind === "capsule") {
         setCapsule(true);
+        sound.current?.pick();
+        return;
+      }
+      if (hit.kind === "sign") {
+        setAdding(hit.accepts ?? { weight: 3, highlighted: false });
         sound.current?.pick();
         return;
       }
@@ -224,6 +238,7 @@ function RoomScene({
       ...world.units.map((u) => ({ key: u.key, label: u.label, face: u as Face })),
       ...(channels.length ? [{ key: "set", label: world.screen.label, face: world.screen as Face }] : []),
       { key: "capsule", label: world.capsule.label, face: world.capsule as Face },
+      { key: "board", label: world.board.label, face: world.board as Face },
     ],
     [world, channels.length],
   );
@@ -446,6 +461,8 @@ function RoomScene({
                 hint:
                   hit.kind === "capsule"
                     ? "E · SEALED UNTIL ITS DATE"
+                    : hit.kind === "sign"
+                      ? "E · ADD SOMETHING HERE"
                     : hit.kind === "tv"
                       ? "E · SIT DOWN AND WATCH"
                       : "E · TAKE IT OFF THE SHELF",
@@ -511,7 +528,7 @@ function RoomScene({
   /* Anything over the room gives the pointer back. With the mouse still
      captured, the cursor stayed hidden and a card's own buttons could not
      be clicked. */
-  const covering = opened !== null || watching || capsule;
+  const covering = opened !== null || watching || capsule || adding !== null;
   useEffect(() => {
     if (covering && document.pointerLockElement) document.exitPointerLock();
   }, [covering]);
@@ -550,6 +567,8 @@ function RoomScene({
     const L = live.current;
     const down = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
+      // typing a link or a why is typing, not walking: the "w" in "why" stays in the box
+      if (e.target instanceof Element && e.target.closest("input, textarea, [contenteditable]")) return;
       /* A focused control owns its own keys. Enter used to be taken for
          "take it off the shelf" everywhere, which meant a keyboard could not
          press the very button it had tabbed to. */
@@ -557,7 +576,8 @@ function RoomScene({
         e.target instanceof Element && e.target.closest("button, a, select, input, textarea");
       if (control && (k === "enter" || k === " ")) return;
       // with a card in your hands, or the big screen up, you are not walking
-      if ((opened !== null || theatre || capsule) && (KEYMAP[k] || LOOKMAP[k])) return;
+      if ((opened !== null || theatre || capsule || adding) && (KEYMAP[k] || LOOKMAP[k] || /^[1-9]$/.test(k)))
+        return;
       if (KEYMAP[k]) {
         L.glide = null; // your own feet win over a walk you asked for
         L.keys.add(KEYMAP[k]!);
@@ -579,7 +599,7 @@ function RoomScene({
         return;
       }
       if (k === "e" || k === "enter") {
-        if (opened === null && !theatre && !capsule) activate(L.aim);
+        if (opened === null && !theatre && !capsule && !adding) activate(L.aim);
         e.preventDefault();
         return;
       }
@@ -597,7 +617,8 @@ function RoomScene({
         return;
       }
       if (k === "escape") {
-        if (capsule) setCapsule(false);
+        if (adding) setAdding(null);
+        else if (capsule) setCapsule(false);
         else if (theatre) setTheatre(false);
         else if (opened !== null) setOpened(null);
         else if (document.pointerLockElement === rootRef.current) document.exitPointerLock();
@@ -626,7 +647,7 @@ function RoomScene({
       document.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
     };
-  }, [activate, capsule, channels.length, goTo, onLeave, opened, places, theatre, tune]);
+  }, [activate, adding, capsule, channels.length, goTo, onLeave, opened, places, theatre, tune]);
 
   /* ---------- looking around ---------- */
   useEffect(() => {
@@ -957,6 +978,16 @@ function RoomScene({
         </div>
       ) : null}
 
+      {adding ? (
+        <AddLinkForm
+          tone="room"
+          accepts={adding}
+          shelfNames={place.shelves}
+          onSave={onAdd}
+          onClose={() => setAdding(null)}
+        />
+      ) : null}
+
       {capsule ? (
         <div className={styles.inspect} role="dialog" aria-modal="true" aria-label="the capsule">
           <div className={styles.capsuleCard}>
@@ -1011,7 +1042,9 @@ function RoomScene({
                 <p className={styles.frontWhy}>{openedEntry.why}</p>
                 <div className={styles.strip}>
                   {openedEntry.work.runtime} ·{" "}
-                  {offers[0]?.provider.name.toUpperCase() ?? "NOT STREAMING HERE"}
+                  {isDraft(openedEntry)
+                    ? "DRAFT · ON THIS DEVICE ONLY"
+                    : (offers[0]?.provider.name.toUpperCase() ?? "NOT STREAMING HERE")}
                 </div>
               </div>
               <div className={`${styles.face} ${styles.faceBack}`}>

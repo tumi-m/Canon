@@ -12,7 +12,7 @@ milestone; update it before finishing one.
 | **M0 · Foundation** | ✅ done |
 | **M1 · Schema & RLS** | 🟡 the migration is **written and waiting for your approval** at `supabase/migrations/0001_canon_init.sql` — not applied, per CLAUDE.md #2. Applying it needs a Supabase project |
 | **M2 · Auth & profile** | ⬜ not started — blocked on M1. Sign-in is the next real feature and needs the database first |
-| **M3 · Entries & the text view** | 🟡 the *view* is built and server-rendered; the paste-a-link flow, metadata resolution and reordering are not — they need M1/M2 |
+| **M3 · Entries & the text view** | 🟡 the view is built and server-rendered. The **add-a-link flow is built end to end but saves drafts to the browser only** (`src/lib/drafts.ts`) — the save needs M1/M2. Metadata resolution and reordering are not built |
 | **M3.5 · YouTube** | ✅ id parsing, embeds, thumbnails, and the channel dial in the room |
 | **M4 · Availability layer** | 🟡 the shape is built (per-region offers, per-item attribution, no synthesised deep links); the live TMDB fetch and Redis cache are not — **blocked**: needs `TMDB_API_KEY` |
 | **M5 · The room** | ✅ shipping — a den drawn with three.js (moved off CSS 3D), five venues with their own fittings and floors, the television, places you can walk to from a list, motion throughout; loaded only when opened |
@@ -103,10 +103,17 @@ anything. A capsule that is only sealed in a component is not sealed.
    checks that nothing leaves the room, nothing stands inside anything else
    and every piece is shelved. When profiles come from the database, that is
    the test that says a real person's canon will fit.
-7. **Commit before you stop.** A whole session's renderer rewrite was once
+7. **Adding a link works, but only as a local draft.** The form, the signs
+   in the room and the "on this device" panel are real; what they save goes
+   to `localStorage` under `canon:drafts:<handle>`, is re-validated whenever
+   it is read back, and is labelled a draft everywhere it appears. When M2
+   lands, `newLinkSchema` is already the input shape for the server action:
+   swap `saveDrafts` for the action, and offer to move existing drafts into
+   the signed-in person's canon. Do not let a draft look saved before then.
+8. **Commit before you stop.** A whole session's renderer rewrite was once
    lost uncommitted when the cloud container was reclaimed, and had to be
    rebuilt from the transcript. Push at every green point.
-8. **Two things this environment could not verify.** YouTube's CDN is
+9. **Two things this environment could not verify.** YouTube's CDN is
    unreachable from the sandbox, so no thumbnail and no embed has been *seen*
    to load — the wiring is unit-tested, the network path is not. And frame rate
    on real hardware is still unmeasured: everything has been driven headless,
