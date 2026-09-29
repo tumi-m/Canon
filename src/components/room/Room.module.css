@@ -1,0 +1,912 @@
+/* ============================================================
+   THE ROOM — somebody's den, drawn by three.js
+   Geometry lives in world.ts, meshes and light in scene.ts.
+   This file dresses only what sits on top: the hud, the reticle,
+   the card you take off the shelf, and the big screen.
+   ============================================================ */
+
+.room {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow: hidden;
+  background: var(--room-void);
+  cursor: crosshair;
+  touch-action: none;
+  contain: strict;
+}
+.room.look {
+  cursor: none;
+}
+
+
+/* the gpu draws the whole room into this */
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* no webgl: say so, and offer the list, which is always there */
+.noGl {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: #f0e2cb;
+}
+.noGl button {
+  border: 1px solid rgba(240, 226, 203, 0.4);
+  padding: 10px 18px;
+  border-radius: 99px;
+  color: #f0e2cb;
+  background: rgba(0, 0, 0, 0.4);
+}
+.noGl button:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+.theatre {
+  position: fixed;
+  inset: 0;
+  z-index: 207;
+  background: #05060a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 3vh 3vw 12vh;
+}
+.theatreScreen {
+  position: relative;
+  width: min(100%, calc((100vh - 22vh) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+  box-shadow:
+    0 0 0 1px rgba(240, 226, 203, 0.12),
+    0 0 180px 40px rgba(120, 170, 255, 0.09);
+}
+.theatreScreen iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.theatreBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: #f0e2cb;
+}
+.theatreBar button {
+  border: 1px solid rgba(240, 226, 203, 0.35);
+  padding: 9px 16px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #f0e2cb;
+}
+.theatreBar button:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+.theatreTitle {
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  color: #fff;
+  text-align: center;
+  max-width: 60ch;
+}
+
+
+.hud {
+  position: fixed;
+  z-index: 206;
+  font-family: var(--mono);
+  color: #f0e2cb;
+  letter-spacing: 0.1em;
+  font-size: 0.68rem;
+}
+.hudTop {
+  top: 18px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 22px;
+  align-items: flex-start;
+  pointer-events: none;
+}
+.hudTop > * {
+  pointer-events: auto;
+}
+.exit {
+  border: 1px solid rgba(240, 226, 203, 0.6);
+  padding: 11px 20px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+.exit:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+/* The way out is focused from the moment you walk in, so a keyboard user can
+   always reach it — and with a filled red focus style it glowed like an alarm
+   for the whole visit. Focus is a ring; red is for the hand on it. */
+.exit:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
+}
+.exitHint {
+  display: block;
+  font-size: 0.56rem;
+  letter-spacing: 0.18em;
+  opacity: 0.7;
+  margin-top: 3px;
+}
+.now {
+  background: rgba(0, 0, 0, 0.48);
+  padding: 8px 14px;
+  border-radius: 99px;
+  border: 1px solid rgba(240, 226, 203, 0.18);
+}
+.hudBot {
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px 22px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0 16px;
+}
+/* controls travel in the groups they belong to: walking, the set, the room */
+.pad,
+.group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.pad button {
+  min-width: 42px;
+  padding: 0;
+}
+/* touch: the stick owns the bottom-left corner, so the controls keep clear of it */
+.hudTouch {
+  justify-content: flex-end;
+  padding-left: 168px;
+  padding-right: 12px;
+  bottom: 14px;
+  gap: 6px;
+}
+.hudTouch .group {
+  justify-content: flex-end;
+}
+.hudTouch button {
+  height: 38px;
+  min-width: 0;
+  padding: 0 10px;
+  font-size: 0.62rem;
+}
+.hudTouch .venueLabel {
+  display: none;
+}
+.hudTouch .venuePick select {
+  padding: 9px 6px;
+  font-size: 0.62rem;
+}
+.hudBot button {
+  min-width: 50px;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(240, 226, 203, 0.35);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f0e2cb;
+  font-size: 0.72rem;
+}
+.hudBot button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.hudBot button:hover:not(:disabled) {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+/* how to move, said once at the top and then out of the way */
+.hint {
+  align-self: center;
+  opacity: 0.55;
+  max-width: min(64ch, 60vw);
+  text-align: center;
+  pointer-events: none !important;
+  animation: hintAway 1.2s 14s var(--ease) forwards;
+}
+@keyframes hintAway {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.retic {
+  position: fixed;
+  z-index: 205;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  pointer-events: none;
+  opacity: 0.7;
+  transition:
+    opacity 0.2s,
+    transform 0.28s var(--ease);
+}
+.retic::before,
+.retic::after {
+  content: "";
+  position: absolute;
+  background: rgba(255, 238, 214, 0.8);
+}
+.retic::before {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  margin-left: -0.5px;
+}
+.retic::after {
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  margin-top: -0.5px;
+}
+.reticHot {
+  opacity: 1;
+  transform: scale(1.5);
+}
+.reticHot::before,
+.reticHot::after {
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+}
+
+.aimLabel {
+  position: fixed;
+  z-index: 205;
+  left: 50%;
+  /* in the lower third, not over the very thing it is naming */
+  bottom: 92px;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: #fff2e0;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 7px 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(240, 226, 203, 0.2);
+  pointer-events: none;
+  max-width: min(44ch, 86vw);
+  /* keyed on the title, so it rises in afresh each time the reticle moves on */
+  animation: aimIn 0.32s var(--ease) both;
+}
+@keyframes aimIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+    letter-spacing: 0.16em;
+  }
+}
+/* on touch the label is what you tap, so it sits by the reticle and looks it */
+.aimTap {
+  bottom: auto;
+  top: calc(50% + 30px);
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 11px 18px;
+  font-size: 0.74rem;
+  border-color: var(--red);
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.25);
+}
+.aimLabel small {
+  display: block;
+  opacity: 0.6;
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  margin-top: 3px;
+}
+
+.shelfList {
+  position: fixed;
+  z-index: 205;
+  right: 22px;
+  /* under the "where you are" badge, clear of the controls whatever they wrap to */
+  top: 70px;
+  width: 190px;
+  background: rgba(0, 0, 0, 0.52);
+  border: 1px solid rgba(240, 226, 203, 0.2);
+  border-radius: 5px;
+  padding: 10px;
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+  color: #d6c8ae;
+}
+.shelfRow {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 4px;
+  border-radius: 3px;
+  text-align: left;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.5;
+  transition:
+    opacity 0.3s,
+    color 0.3s,
+    transform 0.35s var(--ease);
+}
+.shelfRow.shelfOn {
+  opacity: 1;
+  color: #ffd9a8;
+  transform: translateX(-4px);
+}
+.shelfDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.stick {
+  position: fixed;
+  z-index: 205;
+  bottom: 96px;
+  left: 26px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1px solid rgba(240, 226, 203, 0.28);
+  background: rgba(0, 0, 0, 0.34);
+  touch-action: none;
+}
+.stick i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  background: rgba(240, 226, 203, 0.34);
+  border: 1px solid rgba(240, 226, 203, 0.45);
+}
+
+.vign {
+  position: fixed;
+  inset: 0;
+  z-index: 204;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 50%, transparent 46%, rgba(0, 0, 0, 0.72) 100%);
+}
+.dust {
+  position: fixed;
+  inset: 0;
+  z-index: 203;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    radial-gradient(1.4px 1.4px at 20% 30%, rgba(255, 226, 180, 0.6), transparent),
+    radial-gradient(1.2px 1.2px at 70% 60%, rgba(255, 226, 180, 0.45), transparent),
+    radial-gradient(1.6px 1.6px at 45% 80%, rgba(255, 226, 180, 0.32), transparent),
+    radial-gradient(1.1px 1.1px at 86% 22%, rgba(255, 226, 180, 0.34), transparent);
+  animation: dustdrift 16s ease-in-out infinite alternate;
+}
+@keyframes dustdrift {
+  to {
+    transform: translate3d(20px, -16px, 0);
+  }
+}
+
+/* ---------- the sleeve you pulled out ---------- */
+.inspect {
+  position: fixed;
+  inset: 0;
+  z-index: 208;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 8, 5, 0.76);
+  backdrop-filter: blur(3px);
+}
+.flip {
+  width: min(330px, 80vw);
+  aspect-ratio: 2/3;
+  perspective: 1200px;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.flipIn {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.7s var(--ease);
+}
+.flipped .flipIn {
+  transform: rotateY(180deg);
+}
+.face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7);
+}
+.faceFront {
+  background: #120e0b;
+  display: flex;
+  flex-direction: column;
+}
+.big {
+  flex: 1;
+  margin: 8px 8px 0;
+  border-radius: 2px;
+  display: flex;
+  align-items: flex-end;
+  padding: 14px;
+}
+.big span {
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  color: #fff;
+  line-height: 1.35;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+}
+.frontWhy {
+  margin: 10px 12px 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: #f0e2cb;
+  text-align: left;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.frontWhy::before {
+  content: "“";
+  color: var(--red);
+  margin-right: 1px;
+}
+.strip {
+  background: #e8dcc0;
+  margin: 8px;
+  padding: 7px 9px;
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  color: #2a2118;
+  letter-spacing: 0.06em;
+}
+.faceBack {
+  background: #17120e;
+  transform: rotateY(180deg);
+  padding: 22px 20px;
+  color: #f0e2cb;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  text-align: left;
+}
+.faceBack h3 {
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #fff;
+}
+.quote {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border-left: 2px solid var(--red);
+  padding-left: 11px;
+}
+.rt {
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.1em;
+  opacity: 0.65;
+}
+.offers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.offer {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+  padding: 5px 9px;
+  border-radius: 3px;
+  color: #fff;
+  text-decoration: none;
+}
+.tools {
+  position: absolute;
+  bottom: 34px;
+  display: flex;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 0 12px;
+}
+.tools button {
+  border: 1px solid rgba(240, 226, 203, 0.4);
+  padding: 9px 15px;
+  border-radius: 99px;
+  color: #f0e2cb;
+  background: rgba(0, 0, 0, 0.4);
+}
+.tools button:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dust {
+    animation: none;
+  }
+  .sleeve,
+  .flipIn {
+    transition: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .hint {
+    display: none;
+  }
+  /* on a phone the shelves are a row of chips under the top bar: walking
+     across a room with a thumbstick is the hard way to reach one */
+  .shelfList {
+    top: 62px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    display: flex;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    background: none;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .shelfRow {
+    flex: none;
+    width: auto;
+    padding: 7px 10px;
+    border-radius: 99px;
+    border: 1px solid rgba(240, 226, 203, 0.25);
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0.8;
+  }
+  .shelfRow.shelfOn {
+    transform: none;
+    border-color: #ffd9a8;
+  }
+  .shelfKey {
+    display: none;
+  }
+  .shelfBreak {
+    margin: 0 0 0 8px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(240, 226, 203, 0.25);
+  }
+}
+
+/* change building without leaving */
+.venuePick {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.venueLabel {
+  opacity: 0.55;
+}
+.venuePick select {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  color: #f0e2cb;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid rgba(240, 226, 203, 0.35);
+  border-radius: 5px;
+  padding: 11px 10px;
+}
+
+
+/* ---------- motion ----------
+   All of it is decoration on top of something that already works, and all of
+   it is switched off by the reduced-motion rule in globals.css. */
+
+/* the curtain: down while the room builds, lifted once it can be seen */
+.curtain {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--room-void);
+  color: #f0e2cb;
+  pointer-events: none;
+}
+.curtainName {
+  font-family: var(--serif);
+  font-size: clamp(1.6rem, 4vw, 2.8rem);
+  letter-spacing: -0.01em;
+  animation: curtainName 1.2s var(--ease) both;
+}
+.curtainNote {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  opacity: 0.6;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+.curtainLift {
+  animation: curtainLift 1.15s var(--ease) forwards;
+}
+.curtainLift .curtainName {
+  animation: curtainNameOut 0.9s var(--ease) forwards;
+}
+@keyframes curtainName {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(6px);
+  }
+}
+@keyframes curtainNameOut {
+  to {
+    opacity: 0;
+    transform: translateY(-18px) scale(1.04);
+    filter: blur(4px);
+  }
+}
+@keyframes curtainLift {
+  0% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+  }
+}
+@keyframes breathe {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* taking a case off the shelf: it comes up into your hands, not onto a page */
+.inspect {
+  animation: dim 0.35s ease-out both;
+}
+.inspect .flip {
+  animation: pickUp 0.62s var(--ease) both;
+}
+.inspect .tools {
+  animation: rise 0.5s 0.22s var(--ease) both;
+}
+@keyframes dim {
+  from {
+    background: rgba(12, 8, 5, 0);
+    backdrop-filter: blur(0);
+  }
+}
+@keyframes pickUp {
+  from {
+    opacity: 0;
+    transform: translateY(26vh) scale(0.42) rotateX(46deg) rotateZ(-4deg);
+  }
+  60% {
+    opacity: 1;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* the big screen switches on like a tube: a line, then the picture */
+.theatre {
+  animation: dim 0.3s ease-out both;
+}
+.theatreScreen {
+  animation: tubeOn 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.theatreTitle,
+.theatreBar {
+  animation: rise 0.5s 0.4s var(--ease) both;
+}
+@keyframes tubeOn {
+  0% {
+    transform: scale(0.55, 0.006);
+    filter: brightness(5) saturate(0);
+    opacity: 0.2;
+  }
+  35% {
+    transform: scale(1, 0.006);
+    filter: brightness(4) saturate(0);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+    filter: none;
+  }
+}
+
+/* the hud arrives after the room does */
+.hud,
+.shelfList {
+  animation: rise 0.7s 0.5s var(--ease) both;
+}
+
+@media (max-width: 760px) {
+  .exit {
+    padding: 8px 14px;
+    font-size: 0.64rem;
+  }
+  .exitHint {
+    display: none;
+  }
+  .now {
+    font-size: 0.6rem;
+    max-width: 52vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* the capsule's card: brass and paper, and deliberately nothing inside */
+.capsuleCard {
+  position: relative;
+  width: min(380px, 86vw);
+  padding: 34px 28px 26px;
+  border-radius: 6px;
+  background:
+    linear-gradient(160deg, rgba(255, 236, 200, 0.07), transparent 60%),
+    #17110d;
+  border: 1px solid rgba(214, 170, 96, 0.45);
+  box-shadow:
+    0 0 0 6px rgba(214, 170, 96, 0.06),
+    0 30px 70px rgba(0, 0, 0, 0.7);
+  color: #f0e2cb;
+  text-align: left;
+  animation: pickUp 0.62s var(--ease) both;
+}
+.seal {
+  position: absolute;
+  top: -22px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #e0503a, var(--red) 55%, #7a2012);
+  color: #ffd9c8;
+  font-size: 1.1rem;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+.capsuleKicker {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #d6aa60;
+}
+.capsuleTitle {
+  margin-top: 10px;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+.capsuleBody {
+  margin-top: 14px;
+  font-family: var(--serif);
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: #e3d3b6;
+}
+.capsuleNote {
+  margin-top: 14px;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  line-height: 1.7;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+
+/* the shelf list is a way to get places now: it answers the hand */
+.shelfRow:hover,
+.shelfRow:focus-visible {
+  opacity: 1;
+  background: rgba(240, 226, 203, 0.08);
+}
+.shelfName {
+  flex: 1;
+}
+/* the shelves, then the other things in the room worth walking to */
+.shelfBreak {
+  margin-top: 6px;
+  border-top: 1px solid rgba(240, 226, 203, 0.12);
+  padding-top: 8px;
+}
+.shelfKey {
+  font-family: var(--mono);
+  font-size: 0.52rem;
+  padding: 1px 5px;
+  border: 1px solid rgba(240, 226, 203, 0.3);
+  border-radius: 3px;
+  opacity: 0.7;
+}

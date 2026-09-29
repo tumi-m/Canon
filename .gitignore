@@ -10,6 +10,9 @@ out/
 dist/
 build/
 
+# vercel
+.vercel
+
 # test output
 coverage/
 playwright-report/
@@ -27,3 +30,6 @@ Thumbs.db
 # logs
 *.log
 npm-debug.log*
+
+# tsc
+*.tsbuildinfo

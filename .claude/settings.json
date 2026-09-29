@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm test*)",
+      "Bash(npx tsc *)",
+      "Bash(npx vitest *)",
+      "Bash(npx playwright test *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(npx supabase gen types *)",
+      "Bash(npx supabase db diff *)"
+    ],
+    "deny": [
+      "Bash(npx supabase db push *)",
+      "Bash(npx supabase db reset *)",
+      "Bash(git push --force*)",
+      "Bash(rm -rf *)",
+      "Read(./.env*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "npx tsc --noEmit 2>&1 | head -30" }]
+      }
+    ]
+  }
+}

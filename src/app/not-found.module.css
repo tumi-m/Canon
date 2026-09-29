@@ -1,0 +1,32 @@
+.page {
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 120px 24px;
+}
+.code {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  color: var(--red);
+  text-transform: uppercase;
+}
+.title {
+  font-weight: 400;
+  font-size: clamp(2rem, 5vw, 3rem);
+  margin-top: 14px;
+  animation: settle 0.8s var(--ease) both;
+}
+.lede {
+  color: var(--ink-soft);
+  margin-top: 18px;
+  max-width: 48ch;
+}
+.back {
+  margin-top: 28px;
+}
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
