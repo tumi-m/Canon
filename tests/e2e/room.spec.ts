@@ -76,9 +76,19 @@ test.describe("the room", () => {
     await expect(page.locator("[data-canon-room]")).toHaveCount(1);
   });
 
-  test("walks you to the set, and it says what it is for", async ({ page }) => {
+  test("hangs the piece that changed you most over the fireplace, with its why", async ({ page }) => {
     await openRoom(page);
     await page.keyboard.press("5");
+    await expect(page.locator("[class*=now]")).toHaveText("the fireplace", { timeout: 20_000 });
+    // the first of the changed-me tier, framed over the mantel
+    await expect(page.locator("[class*=aimLabel]")).toContainText("making of gta 1, 1996");
+    await page.keyboard.press("e");
+    await expect(page.getByRole("dialog").getByText("proof that world-changing things start scrappy and small.").first()).toBeVisible();
+  });
+
+  test("walks you to the set, and it says what it is for", async ({ page }) => {
+    await openRoom(page);
+    await page.keyboard.press("6");
     await expect(page.locator("[class*=aimLabel]")).toContainText("the television", { timeout: 20_000 });
     await expect(page.locator("[class*=now]")).toHaveText("the set");
   });

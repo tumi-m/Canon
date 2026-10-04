@@ -176,8 +176,10 @@ export function buildHome(
     for (const sz of [-1, 1]) table.add(mesh(new THREE.BoxGeometry(14, 102, 14), darkWood, sx * (tw / 2 - 18), 51, sz * (td / 2 - 18)));
   }
   // a stack of books, a mug, and a candle that has been lit a few times
+  // the near end: books. the far end: the mug and the candle. the middle is
+  // left for the pile of cases that lives there
   [["#7a2e24", 0], ["#2e4a5c", 0.12], ["#c9b78a", -0.08]].forEach(([colour, turn], i) => {
-    const book = mesh(new THREE.BoxGeometry(90, 14, 62), keep(new THREE.MeshStandardMaterial({ color: colour as string, roughness: 0.8 })), -tw / 2 + 70, 126 + i * 14, -10);
+    const book = mesh(new THREE.BoxGeometry(68, 14, 58), keep(new THREE.MeshStandardMaterial({ color: colour as string, roughness: 0.8 })), -tw / 2 + 46, 126 + i * 14, -6);
     book.rotation.y = turn as number;
     table.add(book);
   });
@@ -186,12 +188,12 @@ export function buildHome(
   const handle = mesh(new THREE.TorusGeometry(9, 3, 8, 16), ceramic, 15, 16, 0);
   handle.rotation.y = Math.PI / 2;
   mug.add(handle);
-  mug.position.set(tw / 2 - 60, 119, 28);
+  mug.position.set(tw / 2 - 26, 119, 30);
   table.add(mug);
-  table.add(mesh(new THREE.CylinderGeometry(10, 10, 36, 16), ceramic, tw / 2 - 40, 137, -30));
+  table.add(mesh(new THREE.CylinderGeometry(10, 10, 36, 16), ceramic, tw / 2 - 24, 137, -34));
   const candleFlame = new THREE.Mesh(new THREE.SphereGeometry(5, 10, 8), coreMat);
   candleFlame.scale.y = 1.8;
-  candleFlame.position.set(tw / 2 - 40, 164, -30);
+  candleFlame.position.set(tw / 2 - 24, 164, -34);
   table.add(candleFlame);
   scene.add(table);
 

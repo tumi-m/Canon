@@ -6,7 +6,9 @@ import type { Venue } from "./venues";
 import {
   boardTexture,
   signTexture,
+  cardTexture,
   coverTexture,
+  pictureTexture,
   disposeTextures,
   plaqueTexture,
   plasterTexture,
@@ -99,11 +101,13 @@ export function hitOf(object: THREE.Object3D | null): Hit | null {
 }
 
 /** How deep the carcass is. A crate is a shallow box you flip through. */
-const depthOf = (unit: Unit) => (unit.furniture === "crate" ? 74 : 150);
+const depthOf = (unit: Unit) => (unit.furniture === "crate" ? 74 : unit.furniture === "table" ? 24 : 150);
 
 /** A shelf: a carcass, a back panel, and a shelf board under every row. */
 function buildUnit(unit: Unit, timber: THREE.Material, board: THREE.Material): THREE.Group {
   const group = new THREE.Group();
+  // the pile on the coffee table lies on the table itself: there is no carcass
+  if (unit.furniture === "table") return group;
   const depth = depthOf(unit);
   const t = 16;
 
@@ -476,7 +480,7 @@ export function buildStage(
     const sign = new THREE.Mesh(new THREE.BoxGeometry(signW, signW * (150 / 1024), 8), [
       timberMat, timberMat, timberMat, timberMat, signFace, timberMat,
     ]);
-    const signDepth = crate ? 74 : 150;
+    const signDepth = depthOf(unit);
     sign.position.set(0, crate ? unit.height / 2 + 34 : -unit.height / 2 - 44, signDepth / 2 - 6);
     sign.userData["hit"] = {
       kind: "sign",
@@ -494,7 +498,8 @@ export function buildStage(
        leaves a seam you can stand square in front of and aim straight through
        — the reticle is a real ray, and a real ray goes between two objects
        that do not meet. Height keeps a few units back for the shelf board. */
-    const size = { w: slot.w + GAP, h: slot.h - 10 };
+    // a case on the coffee table is its own size, not the size of a grid slot
+    const size = unit.furniture === "table" ? { w: 80, h: 108 } : { w: slot.w + GAP, h: slot.h - 10 };
     for (const sleeve of unit.sleeves) {
       const entry = entries[sleeve.entry];
       if (!entry) continue;
@@ -523,7 +528,17 @@ export function buildStage(
          A fixed 74 was a shelf's number, and left the crate's records hanging
          in the air half a case clear of the box. */
       const stand = depthOf(unit) / 2 - 12;
-      mesh.position.set(sleeve.left + slot.w / 2 - unit.width / 2, up(sleeve.y - unit.fy), stand);
+      if (unit.furniture === "table") {
+        /* The played-to-death pile is a pile, not a grid: each case dropped on
+           the last, a little askew, the top one the one you went back to. */
+        const i = unit.sleeves.indexOf(sleeve);
+        const turn = ((hash(sleeve.key) % 31) - 15) * (Math.PI / 180);
+        mesh.position.set(Math.sin(i * 2.1) * 10, Math.cos(i * 1.7) * 8, 11 + i * 22.5);
+        mesh.rotation.z = turn;
+        mesh.userData["lift"] = 16;
+      } else {
+        mesh.position.set(sleeve.left + slot.w / 2 - unit.width / 2, up(sleeve.y - unit.fy), stand);
+      }
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData["hit"] = {
@@ -667,6 +682,58 @@ export function buildStage(
   scene.add(capsule);
   targets.push(capsule);
 
+  /* ---------- the memory palace: pieces in places of their own ----------
+     The pieces that changed you most, framed: one over the mantel, two
+     standing on it, each with its why written on a card beside it. */
+  const pictures: { material: THREE.MeshStandardMaterial; entry: Entry; hue: number }[] = [];
+  const gilt = keep(new THREE.MeshStandardMaterial({ color: "#b38a4a", roughness: 0.35, metalness: 0.7 }));
+  for (const locus of world.loci) {
+    const entry = entries[locus.entry];
+    if (!entry) continue;
+    const hue = hash(entry.work.title) % 360;
+    const group = new THREE.Group();
+    group.position.set(locus.x, up(locus.y), locus.z);
+    group.rotation.y = (locus.rot * Math.PI) / 180;
+    // standing frames lean back a little against the breast, the way they do
+    if (locus.mount === "stand") group.rotation.x = -0.1;
+    const border = locus.mount === "wall" ? 22 : 12;
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(locus.width + border * 2, locus.height + border * 2, 10), gilt);
+    frame.castShadow = true;
+    group.add(frame);
+    const picture = keep(new THREE.MeshStandardMaterial({ map: pictureTexture({ title: entry.work.title, hue }), roughness: 0.4 }));
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(locus.width, locus.height), picture);
+    face.position.z = 5.5;
+    face.userData["hit"] = {
+      kind: "sleeve",
+      key: `locus-${locus.key}`,
+      entry: locus.entry,
+      label: entry.work.title,
+      shelf: locus.place,
+    } satisfies Hit;
+    face.userData["rest"] = face.position.z;
+    group.add(face);
+    targets.push(face);
+    pictures.push({ material: picture, entry, hue });
+
+    // the why, in ink, on a card: tucked in the corner of a hung frame,
+    // propped in front of a standing one
+    const cardW = locus.mount === "wall" ? 130 : 96;
+    const card = new THREE.Mesh(
+      new THREE.PlaneGeometry(cardW, cardW * 0.625),
+      keep(new THREE.MeshStandardMaterial({ map: keep(cardTexture(entry.why)), roughness: 0.85, side: THREE.DoubleSide })),
+    );
+    if (locus.mount === "wall") {
+      card.position.set(locus.width / 2 - cardW * 0.25, -locus.height / 2 - 6, 9);
+      card.rotation.z = -0.1;
+    } else {
+      card.position.set(0, -locus.height / 2 - 4, 44);
+      card.rotation.x = -1.15;
+    }
+    card.castShadow = true;
+    group.add(card);
+    scene.add(group);
+  }
+
   /* ---------- artwork, once it loads ---------- */
   /* Artwork arrives whenever the network gets round to it — sometimes after
      this room has been torn down for a different building. A late arrival
@@ -696,6 +763,20 @@ export function buildStage(
     // a thumbnail that never arrives simply leaves the drawn cover in place
     image.src = src;
   }
+  for (const { material, entry, hue } of pictures) {
+    const src = thumbnailForEntry(entry);
+    if (!src) continue;
+    const image = new Image();
+    loading.push(image);
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      if (disposed) return;
+      material.map?.dispose();
+      material.map = pictureTexture({ title: entry.work.title, hue, image });
+      material.needsUpdate = true;
+    };
+    image.src = src;
+  }
 
   let lifted: THREE.Object3D | null = null;
   /** cases still easing off or back onto their shelf */
@@ -707,7 +788,8 @@ export function buildStage(
   const settle = (object: THREE.Object3D, dt: number) => {
     const rest = object.userData["rest"] as number;
     const held = object === lifted;
-    const z = held ? rest + 46 : rest;
+    // a case slides out of a bookcase; one on a pile only lifts a little off it
+    const z = held ? rest + ((object.userData["lift"] as number | undefined) ?? 46) : rest;
     const k = held ? 1.06 : 1;
     if (still) {
       object.position.z = z;

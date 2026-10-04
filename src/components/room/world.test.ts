@@ -34,10 +34,11 @@ describe("buildWorld", () => {
   const world = buildWorld(entries);
 
   it("puts every canon entry somewhere in the room", () => {
-    const shelved = world.units
-      .flatMap((u) => u.sleeves)
-      .filter((s) => s.entry !== null)
-      .map((s) => s.entry);
+    // on a shelf, or in a place of its own in the memory palace
+    const shelved = [
+      ...world.units.flatMap((u) => u.sleeves).map((s) => s.entry),
+      ...world.loci.map((l) => l.entry),
+    ];
     for (let i = 0; i < entries.length; i++) expect(shelved).toContain(i);
   });
 
@@ -188,8 +189,9 @@ describe("viewpointFor", () => {
   it("looks down into a crate and up at a shelf", () => {
     for (const unit of world.units) {
       const at = viewpointFor(unit, world);
-      if (unit.furniture === "crate") expect(at.pitch).toBeLessThan(0);
-      else expect(at.pitch).toBeGreaterThanOrEqual(0);
+      // a crate and the coffee table are below your eyes; a bookcase is not
+      if (unit.furniture === "shelf") expect(at.pitch).toBeGreaterThanOrEqual(0);
+      else expect(at.pitch).toBeLessThan(0);
     }
   });
 
@@ -226,6 +228,8 @@ describe("a canon of any size", () => {
   it.each(sizes)("fits %i / %i / %i (picks %i) inside the room", (a, b, c, d) => {
     const world = buildWorld(canonOf(a, b, c, d));
     for (const unit of world.units) {
+      // the pile on the coffee table lies flat: its "height" runs along the tabletop
+      if (unit.furniture === "table") continue;
       const top = unit.fy - unit.height / 2;
       const bottom = unit.fy + unit.height / 2;
       // +y is down: the ceiling is the smaller number
@@ -248,7 +252,11 @@ describe("a canon of any size", () => {
 
   it.each(sizes)("shelves every piece at %i / %i / %i (picks %i)", (a, b, c, d) => {
     const entries = canonOf(a, b, c, d);
-    const shelved = new Set(buildWorld(entries).units.flatMap((u) => u.sleeves.map((s) => s.entry)));
+    const world = buildWorld(entries);
+    const shelved = new Set([
+      ...world.units.flatMap((u) => u.sleeves.map((s) => s.entry)),
+      ...world.loci.map((l) => l.entry),
+    ]);
     for (let i = 0; i < entries.length; i++) expect(shelved.has(i), `piece ${i} is nowhere`).toBe(true);
   });
 });
@@ -287,6 +295,59 @@ describe("the living room", () => {
   it("can walk you to the noticeboard by the door", () => {
     const at = viewpointFor(world.board, world);
     expect(collide(at.x, at.z, world.boxes, world.bounds)).toEqual([at.x, at.z]);
+  });
+});
+
+describe("the memory palace", () => {
+  const world = buildWorld(entries);
+  const changed = entries.flatMap((e, i) => (e.weight === 3 ? [i] : []));
+
+  it("hangs the piece that changed you most over the mantel, and stands the next two on it", () => {
+    expect(world.loci.map((l) => l.key)).toEqual(["over-mantel", "mantel-left", "mantel-right"]);
+    expect(world.loci.map((l) => l.entry)).toEqual(changed.slice(0, 3));
+  });
+
+  it("takes them off the bookcase, rather than keeping a second copy there", () => {
+    const back = world.units.find((u) => u.accepts.weight === 3 && !u.accepts.highlighted)!;
+    const onShelf = back.sleeves.map((s) => s.entry);
+    for (const locus of world.loci) expect(onShelf).not.toContain(locus.entry);
+    expect(onShelf).toEqual(changed.slice(3));
+  });
+
+  it("lays the played-to-death pile on the coffee table", () => {
+    const pile = world.units.find((u) => u.accepts.highlighted)!;
+    expect(pile.furniture).toBe("table");
+    const table = world.home!.furniture.find((f) => f.key === "coffee-table")!;
+    // somewhere on the tabletop: it runs along z, the long way
+    expect(Math.abs(pile.fx - table.x)).toBeLessThan(table.depth / 2);
+    expect(Math.abs(pile.fz - table.z)).toBeLessThan(table.width / 2);
+  });
+
+  it("files each tier by what it is, not by its place in the list", () => {
+    // no picks at all: the good shelf must still go to the right-hand wall
+    const noPicks = entries.map((e) => ({ ...e, highlighted: false }));
+    const good = buildWorld(noPicks).units.find((u) => u.accepts.weight === 2)!;
+    expect(good.fx).toBeGreaterThan(0);
+    expect(good.furniture).toBe("shelf");
+  });
+
+  it("keeps the mantel pieces inside the room, facing into it", () => {
+    for (const l of world.loci) {
+      expect(l.x).toBeGreaterThan(-G.roomX);
+      expect(l.y - l.height / 2).toBeGreaterThan(G.ceilY);
+      expect(Math.sin((l.rot * Math.PI) / 180)).toBeGreaterThan(0.99); // facing +x, into the room
+    }
+  });
+
+  it("can walk you to the fireplace", () => {
+    const at = viewpointFor(world.hearth!, world);
+    expect(collide(at.x, at.z, world.boxes, world.bounds)).toEqual([at.x, at.z]);
+  });
+
+  it("leaves a bare building without one", () => {
+    const bare = buildWorld(entries, undefined, false);
+    expect(bare.loci).toEqual([]);
+    expect(bare.hearth).toBeNull();
   });
 });
 

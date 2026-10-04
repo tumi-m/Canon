@@ -37,7 +37,7 @@ export const G = {
  * clutter, and they were the worst-looking objects in the room. Everything left
  * carries the product.
  */
-export type Furniture = "shelf" | "crate";
+export type Furniture = "shelf" | "crate" | "table";
 
 /**
  * The slot each sleeve occupies, centre to centre once GAP is added.
@@ -57,6 +57,8 @@ const SLEEVE: Record<Furniture, { w: number; h: number; cols: number }> = {
   shelf: { w: 148, h: 214, cols: 5 },
   // a floor crate you flip through: square, the way a record sleeve is
   crate: { w: 168, h: 188, cols: 4 },
+  // cases lying on the coffee table, the pile you keep going back to
+  table: { w: 84, h: 118, cols: 3 },
 };
 
 export const GAP = 12;
@@ -143,7 +145,10 @@ export type Face = Pick<Unit, "fx" | "fy" | "fz" | "rot" | "width" | "height"> &
 };
 
 /** A place in the room that is not a shelf, but that you might want to go to. */
-export type Feature = Face & { readonly key: "set" | "capsule" | "board"; readonly label: string };
+export type Feature = Face & {
+  readonly key: "set" | "capsule" | "board" | "fireplace";
+  readonly label: string;
+};
 
 /**
  * A piece of furniture that is not holding the canon: what makes a room a
@@ -177,6 +182,28 @@ export type Home = {
   readonly rugs: readonly { x: number; z: number; width: number; depth: number }[];
 };
 
+/**
+ * A place in the memory palace: one piece, somewhere you would remember it.
+ * The pieces that changed you most leave the bookcase for the fireplace —
+ * the first over the mantel, the next two standing on it.
+ */
+export type Locus = {
+  readonly key: string;
+  /** which entry hangs or stands here */
+  readonly entry: number;
+  /** its middle, +y down like everything here, and the way it faces */
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly rot: number;
+  readonly width: number;
+  readonly height: number;
+  /** hung flat on the wall, or standing on the mantel leaning back */
+  readonly mount: "wall" | "stand";
+  /** the place it belongs to, for the badge */
+  readonly place: string;
+};
+
 export type World = {
   readonly sections: readonly Section[];
   readonly units: readonly Unit[];
@@ -192,6 +219,10 @@ export type World = {
   readonly board: Feature;
   /** a furnished room's furniture, window and door; null for the bare buildings */
   readonly home: Home | null;
+  /** pieces given a place of their own rather than a slot on a shelf */
+  readonly loci: readonly Locus[];
+  /** the fireplace, as somewhere to walk to; null in a bare building */
+  readonly hearth: Feature | null;
   readonly bounds: { xMin: number; xMax: number; zMin: number; zMax: number };
 };
 
@@ -398,11 +429,48 @@ export function buildWorld(
     { furniture: "crate" as const, x: 450, y: 150, z: -170, rot: -24, tilt: -16, maxWidth: 520 },
   ];
 
-  sections.forEach((section, i) => {
-    const spot = spots[i % spots.length]!;
+  /* In a home the coffee table holds the played-to-death pile — its origin on
+     the tabletop, 119 up — and the
+     record crate stands out of the line between the door and the fire. */
+  const table = { furniture: "table" as const, x: 630, y: G.floorY - 119, z: 30, rot: 0, tilt: 90, maxWidth: 140, maxHeight: 290 };
+  const crate = furnished ? { ...spots[3]!, x: -560, z: -480 } : spots[3]!;
+
+  /* Which shelf goes where is decided by what it is, not by where it falls in
+     the list. By position, a canon with no played-to-death pieces put "the
+     good shelf" wherever the played-to-death shelf would have gone. */
+  const spotFor = (a: Accepts) =>
+    a.highlighted ? (furnished ? table : spots[1]!) : a.weight === 3 ? spots[0]! : a.weight === 2 ? spots[2]! : crate;
+
+  /* The memory palace. In a home, the pieces that changed you most leave
+     the bookcase for the fireplace: the first hangs over the mantel, the next
+     two stand on it. The rest of the tier stays on the bookcase. */
+  const loci: Locus[] = [];
+  const hearth = furnished ? LIVING_ROOM.furniture.find((f) => f.key === "fireplace")! : null;
+  let shelved = sections;
+  if (hearth) {
+    const changed = sections.find((sec) => sec.accepts.weight === 3 && !sec.accepts.highlighted);
+    if (changed && changed.entries.length) {
+      const face = hearth.x - hearth.depth / 2 + 72; // the chimney breast's face
+      const mantelTop = G.floorY - 225;
+      const spotsOnHearth = [
+        { key: "over-mantel", x: face + 4, y: mantelTop - 160, z: hearth.z, width: 300, height: 200, mount: "wall" as const },
+        { key: "mantel-left", x: face + 55, y: mantelTop - 66, z: hearth.z - 150, width: 100, height: 130, mount: "stand" as const },
+        { key: "mantel-right", x: face + 55, y: mantelTop - 66, z: hearth.z + 150, width: 100, height: 130, mount: "stand" as const },
+      ];
+      changed.entries.slice(0, spotsOnHearth.length).forEach((entry, i) => {
+        const at = spotsOnHearth[i]!;
+        loci.push({ ...at, entry, rot: hearth.rot, place: "the fireplace" });
+      });
+      const rest = changed.entries.slice(spotsOnHearth.length);
+      shelved = sections.map((sec) => (sec === changed ? { ...sec, entries: rest } : sec));
+    }
+  }
+
+  shelved.forEach((section, i) => {
+    const spot = spotFor(section.accepts);
     const unit = makeUnit(`s${i}`, section.name, section.accepts, spot.furniture, section.entries, spot, {
       maxWidth: spot.maxWidth,
-      maxHeight: spot.furniture === "crate" ? 320 : tall(spot.y),
+      maxHeight: spot.furniture === "crate" ? 320 : spot.furniture === "table" ? spot.maxHeight! : tall(spot.y),
     });
     if (!unit) return;
     if (unit.furniture === "crate") {
@@ -421,6 +489,8 @@ export function buildWorld(
 
   // the only things you can walk into are the things holding the canon
   for (const unit of units) {
+    // the coffee table already has a footprint; the pile on it adds none
+    if (unit.furniture === "table") continue;
     const along = unit.width / 2;
     const theta = (unit.rot * Math.PI) / 180;
     const dx = Math.abs(Math.cos(theta)) * along + 60;
@@ -483,6 +553,19 @@ export function buildWorld(
     hatchZ: G.backZ + 60,
     board,
     home,
+    loci,
+    hearth: hearth
+      ? {
+          key: "fireplace",
+          label: "the fireplace",
+          fx: hearth.x - hearth.depth / 2 + 72,
+          fy: G.floorY - 300,
+          fz: hearth.z,
+          rot: hearth.rot,
+          width: hearth.width,
+          height: 420,
+        }
+      : null,
     capsule: {
       key: "capsule",
       label: "the capsule",

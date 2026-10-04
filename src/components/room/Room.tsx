@@ -249,6 +249,7 @@ function RoomScene({
   const places = useMemo(
     () => [
       ...world.units.map((u) => ({ key: u.key, label: u.label, face: u as Face })),
+      ...(world.hearth ? [{ key: "fireplace", label: world.hearth.label, face: world.hearth as Face }] : []),
       ...(channels.length ? [{ key: "set", label: world.screen.label, face: world.screen as Face }] : []),
       { key: "capsule", label: world.capsule.label, face: world.capsule as Face },
       { key: "board", label: world.board.label, face: world.board as Face },

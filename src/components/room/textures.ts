@@ -604,3 +604,102 @@ export function leafTexture(): THREE.Texture {
     return texture;
   });
 }
+
+/**
+ * A framed picture: the piece's artwork, landscape, the way a video is — or
+ * its title set large on a field of its colour until the artwork arrives.
+ */
+export function pictureTexture(opts: { title: string; hue: number; image?: HTMLImageElement | undefined }): THREE.Texture {
+  const { title, hue, image } = opts;
+  const w = 640;
+  const h = 400;
+  const ctx = surface(w, h);
+  if (image) {
+    const scale = Math.max(w / image.width, h / image.height) * 1.34;
+    ctx.drawImage(image, (w - image.width * scale) / 2, (h - image.height * scale) / 2, image.width * scale, image.height * scale);
+  } else {
+    const g = ctx.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, `hsl(${hue} 42% 40%)`);
+    g.addColorStop(1, `hsl(${(hue + 50) % 360} 36% 16%)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(255,248,235,0.92)";
+    ctx.font = "400 46px Georgia, serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    const words = title.split(" ");
+    const lines: string[] = [];
+    let line = "";
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (ctx.measureText(next).width > w - 80 && line) {
+        lines.push(line);
+        line = word;
+      } else line = next;
+    }
+    if (line) lines.push(line);
+    lines.slice(0, 4).forEach((l, i, all) => ctx.fillText(l, 40, h - 50 - (all.length - i) * 54));
+  }
+  // the varnish: a little warmth and a vignette, like a print behind glass
+  const v = ctx.createRadialGradient(w / 2, h / 2, h * 0.3, w / 2, h / 2, w * 0.7);
+  v.addColorStop(0, "rgba(0,0,0,0)");
+  v.addColorStop(1, "rgba(30,15,5,0.35)");
+  ctx.fillStyle = v;
+  ctx.fillRect(0, 0, w, h);
+  const texture = new THREE.CanvasTexture(ctx.canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+/**
+ * The why, written on a card in ink: the memory the place is for. Cream
+ * stock, faint rules, a slant to the hand, and no more than will fit.
+ */
+export function cardTexture(text: string): THREE.Texture {
+  const w = 512;
+  const h = 320;
+  const ctx = surface(w, h);
+  ctx.fillStyle = "#f3ead6";
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = "rgba(90,120,170,0.25)";
+  ctx.lineWidth = 2;
+  for (let y = 70; y < h; y += 44) {
+    ctx.beginPath();
+    ctx.moveTo(24, y);
+    ctx.lineTo(w - 24, y);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(200,64,42,0.35)";
+  ctx.beginPath();
+  ctx.moveTo(56, 0);
+  ctx.lineTo(56, h);
+  ctx.stroke();
+  ctx.save();
+  ctx.translate(70, 34);
+  ctx.transform(1, 0, -0.12, 1, 0, 0); // the slant of somebody's hand
+  ctx.fillStyle = "#1f2a4a";
+  ctx.font = "italic 400 31px Georgia, serif";
+  ctx.textBaseline = "alphabetic";
+  const words = text.split(" ");
+  let line = "";
+  let y = 30;
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (ctx.measureText(next).width > w - 120 && line) {
+      ctx.fillText(line, 0, y);
+      y += 44;
+      line = word;
+      if (y > h - 60) {
+        line = `${line}…`;
+        break;
+      }
+    } else line = next;
+  }
+  if (y <= h - 40) ctx.fillText(line, 0, y);
+  ctx.restore();
+  const texture = new THREE.CanvasTexture(ctx.canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
