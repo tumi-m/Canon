@@ -6,12 +6,13 @@ import * as THREE from "three";
 import type { Entry, Region } from "@/lib/schema";
 import { WEIGHT_LABEL } from "@/lib/schema";
 import { offersFor, regionName } from "@/lib/availability";
-import { channelLabel, channelsFrom, embedUrl, surf, thumbnailFor, thumbnailForEntry } from "@/lib/youtube";
+import { channelLabel, channelsFrom, surf, thumbnailFor, thumbnailForEntry } from "@/lib/youtube";
 import { createRoomSound, STRIDE, type RoomSound } from "@/lib/roomSound";
 import { artFor, buildWorld, collide, G, nearestUnit, viewpointFor, type Face, type Pose } from "./world";
 import { buildStage, hitOf, type Hit, type Screen, type Stage } from "./scene";
 import { VENUES, venueById, type VenueId } from "./venues";
 import { AddLinkForm } from "../AddLink";
+import Monitor from "./Monitor";
 import { isDraft, type newLinkSchema } from "@/lib/drafts";
 import type { Accepts } from "./world";
 import styles from "./Room.module.css";
@@ -51,6 +52,12 @@ type Live = {
   intro: number;
   /** walking over to a shelf somebody picked from the list, if they did */
   glide: Glide | null;
+  /**
+   * Where the mouse is over the room, in normalised device coordinates — or
+   * null when the keyboard is doing the aiming, from the middle of the view.
+   * Whichever was used last decides.
+   */
+  pointer: { x: number; y: number } | null;
 };
 
 type Glide = { from: Pose; to: Pose; t: number; seconds: number };
@@ -120,6 +127,10 @@ function RoomScene({
   const exitRef = useRef<HTMLButtonElement>(null);
   const nubRef = useRef<HTMLElement>(null);
   const stageRef = useRef<Stage | null>(null);
+  /** what is under a point on the screen, while there is a room to ask */
+  const pickRef = useRef<((x: number, y: number) => Hit | null) | null>(null);
+  /** when mouse look last let go of the pointer: the Esc that did it is not a request to leave */
+  const releasedAt = useRef(0);
   /** what the set in the room is showing, kept so a rebuilt room shows it too */
   const screenState = useRef<Screen>({ on: false });
 
@@ -128,6 +139,8 @@ function RoomScene({
   const [opened, setOpened] = useState<number | null>(null);
   const [flipped, setFlipped] = useState(false);
   const [coarse, setCoarse] = useState(false);
+  /** mouse look: the pointer captured, first-person style — only if asked for */
+  const [captured, setCaptured] = useState(false);
   const [theatre, setTheatre] = useState(false);
   /** the capsule's card: what it is, and why it stays shut */
   const [capsule, setCapsule] = useState(false);
@@ -147,7 +160,7 @@ function RoomScene({
   const live = useRef<Live>({
     x: 0, z: G.spawnZ, yaw: 0, pitch: 0, vx: 0, vz: 0, bob: 0,
     keys: new Set(), look: { x: 0, y: 0 }, stick: { x: 0, y: 0 },
-    aim: null, raf: 0, last: 0, frame: 0, stride: 0, intro: 1, glide: null,
+    aim: null, raf: 0, last: 0, frame: 0, stride: 0, intro: 1, glide: null, pointer: null,
   });
 
   /* ---------- the television ---------- */
@@ -347,10 +360,21 @@ function RoomScene({
         new THREE.Vector2(0, -RETICLE),
       ];
       /** whatever the reticle covers, nearest first */
-      const aimAt = (camera: THREE.Camera, targets: THREE.Object3D[]) => {
+      const aimed = new THREE.Vector2();
+      let aimedWith = "";
+      const pointerAt = new THREE.Vector2();
+      /* what is under a point on the screen, asked once — for a click, which
+         should take what the hand is on now, not what the last frame saw */
+      pickRef.current = (x, y) => {
+        stage.camera.updateMatrixWorld();
+        raycaster.setFromCamera(pointerAt.set(x, y), stage.camera);
+        const first = raycaster.intersectObjects(stage.targets, true)[0];
+        return first && first.distance < 1500 ? hitOf(first.object) : null;
+      };
+      const aimAt = (camera: THREE.Camera, targets: THREE.Object3D[], around = probes[0]!) => {
         let best: THREE.Intersection | null = null;
         for (const probe of probes) {
-          raycaster.setFromCamera(probe, camera);
+          raycaster.setFromCamera(aimed.set(around.x + probe.x, around.y + probe.y), camera);
           const first = raycaster.intersectObjects(targets, true)[0];
           if (first && (!best || first.distance < best.distance)) best = first;
         }
@@ -449,24 +473,32 @@ function RoomScene({
           // the camera is not in the scene graph, so nothing else refreshes it;
           // without this the ray is aimed a frame behind where you are looking
           stage.camera.updateMatrixWorld();
-          const first = aimAt(stage.camera, stage.targets);
+          // under the mouse if the mouse was used last, else the middle of the view
+          const first = L.pointer
+            ? aimAt(stage.camera, stage.targets, pointerAt.set(L.pointer.x, L.pointer.y))
+            : aimAt(stage.camera, stage.targets);
           const hit = first && first.distance < 1500 ? hitOf(first.object) : null;
-          if (hit?.key !== L.aim?.key) {
+          // the target, and how you are pointing at it: the label names both
+          const how = touch.current ? "tap" : L.pointer ? "click" : "key";
+          if (hit?.key !== L.aim?.key || how !== aimedWith) {
+            aimedWith = how;
             L.aim = hit ?? null;
             stage.highlight(hit && hit.kind === "sleeve" ? (first?.object ?? null) : null);
+            // the cursor says it can be clicked; the label says what clicking does
+            if (!document.pointerLockElement) {
+              rootRef.current?.classList.toggle(styles.over!, !!hit && !!L.pointer);
+            }
+            const key = touch.current ? "TAP" : L.pointer ? "CLICK" : "E";
+            const does =
+              hit?.kind === "capsule"
+                ? "SEALED UNTIL ITS DATE"
+                : hit?.kind === "sign"
+                  ? "ADD SOMETHING HERE"
+                  : hit?.kind === "tv"
+                    ? "SIT DOWN AND WATCH"
+                    : "TAKE IT OFF THE SHELF";
             if (!hit) setAimLabel(null);
-            else
-              setAimLabel({
-                title: hit.label,
-                hint:
-                  hit.kind === "capsule"
-                    ? "E · SEALED UNTIL ITS DATE"
-                    : hit.kind === "sign"
-                      ? "E · ADD SOMETHING HERE"
-                    : hit.kind === "tv"
-                      ? "E · SIT DOWN AND WATCH"
-                      : "E · TAKE IT OFF THE SHELF",
-              });
+            else setAimLabel({ title: hit.label, hint: `${key} · ${does}` });
           }
           /* what you are looking at beats what happens to be nearest: a small
              crate in the middle of the floor is closer to most of the room than
@@ -490,6 +522,7 @@ function RoomScene({
         cancelAnimationFrame(L.raf);
         window.removeEventListener("resize", fit);
         canvas.removeEventListener("webglcontextlost", lost);
+        pickRef.current = null;
         stage.dispose();
         stageRef.current = null;
       };
@@ -578,6 +611,7 @@ function RoomScene({
       // with a card in your hands, or the big screen up, you are not walking
       if ((opened !== null || theatre || capsule || adding) && (KEYMAP[k] || LOOKMAP[k] || /^[1-9]$/.test(k)))
         return;
+      if (KEYMAP[k] || LOOKMAP[k]) L.pointer = null; // the keyboard is aiming now, from the middle
       if (KEYMAP[k]) {
         L.glide = null; // your own feet win over a walk you asked for
         L.keys.add(KEYMAP[k]!);
@@ -612,16 +646,27 @@ function RoomScene({
       }
       if (k === "]" || k === ".") return tune(1);
       if (k === "[" || k === ",") return tune(-1);
+      if (k === "l" && !touch.current) {
+        e.preventDefault();
+        if (document.pointerLockElement) document.exitPointerLock();
+        else rootRef.current?.requestPointerLock?.();
+        return;
+      }
       if (k === "m") {
         setMuted((m) => !m);
         return;
       }
       if (k === "escape") {
+        // the Esc that let go of mouse look is not a request to leave the room
+        if (performance.now() - releasedAt.current < 400) return;
         if (adding) setAdding(null);
         else if (capsule) setCapsule(false);
         else if (theatre) setTheatre(false);
         else if (opened !== null) setOpened(null);
-        else if (document.pointerLockElement === rootRef.current) document.exitPointerLock();
+        else if (document.pointerLockElement === rootRef.current) {
+          releasedAt.current = performance.now();
+          document.exitPointerLock();
+        }
         else onLeave();
       }
     };
@@ -649,61 +694,107 @@ function RoomScene({
     };
   }, [activate, adding, capsule, channels.length, goTo, onLeave, opened, places, theatre, tune]);
 
-  /* ---------- looking around ---------- */
+  /* ---------- the mouse ----------
+     The mouse works the way it does on any page: point at something and it
+     says what it is, click and you take it, drag and you turn your head. It
+     used to capture the pointer on the first click anywhere in the room —
+     the cursor vanished, the mouse only turned the camera, and the way back
+     was an Esc that could also put you out of the room. Mouse look is still
+     there for anyone who wants it, behind L or the hud, and only then. */
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     const L = live.current;
     const clamp = (p: number) => Math.max(-42, Math.min(42, p));
     const locked = () => document.pointerLockElement === root;
+    const ndc = (e: { clientX: number; clientY: number }) => {
+      const box = root.getBoundingClientRect();
+      return {
+        x: ((e.clientX - box.left) / box.width) * 2 - 1,
+        y: -(((e.clientY - box.top) / box.height) * 2 - 1),
+      };
+    };
 
-    const move = (e: MouseEvent) => {
+    const lookLocked = (e: MouseEvent) => {
       if (!locked()) return;
       L.glide = null;
       L.yaw += e.movementX * 0.13;
       L.pitch = clamp(L.pitch - e.movementY * 0.104);
     };
-    const onLock = () => root.classList.toggle(styles.look!, locked());
+    const onLock = () => {
+      const on = locked();
+      if (!on) releasedAt.current = performance.now();
+      setCaptured(on);
+      root.classList.toggle(styles.look!, on);
+      // captured, you aim from the middle like any first-person view
+      if (on) L.pointer = null;
+    };
 
-    let dragging = false;
+    /** a press becomes a look-around once it has moved further than a wobble */
+    const DRAG = 5;
+    let down: { x: number; y: number; id: number } | null = null;
+    let dragged = false;
     let px = 0;
     let py = 0;
     const pointerDown = (e: PointerEvent) => {
-      if (locked()) return;
-      dragging = true;
+      if (locked() || e.button > 0) return;
+      down = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      dragged = false;
       px = e.clientX;
       py = e.clientY;
     };
     const pointerMove = (e: PointerEvent) => {
-      if (!dragging || locked()) return;
+      if (locked()) return;
+      if (e.pointerType === "mouse") L.pointer = ndc(e);
+      if (!down || e.pointerId !== down.id) return;
+      if (!dragged && Math.hypot(e.clientX - down.x, e.clientY - down.y) > DRAG) {
+        dragged = true;
+        root.classList.add(styles.dragging!);
+        root.setPointerCapture?.(e.pointerId);
+      }
+      if (!dragged) return;
       L.glide = null;
       L.yaw += (e.clientX - px) * 0.22;
       L.pitch = clamp(L.pitch - (e.clientY - py) * 0.16);
       px = e.clientX;
       py = e.clientY;
     };
-    const pointerUp = () => {
-      dragging = false;
+    const pointerUp = (e: PointerEvent) => {
+      if (!down || e.pointerId !== down.id) return;
+      const wasDrag = dragged;
+      down = null;
+      dragged = false;
+      root.classList.remove(styles.dragging!);
+      if (wasDrag || locked()) return;
+      // a click, or a tap: take whatever is under it, right now
+      const at = ndc(e);
+      activate(pickRef.current?.(at.x, at.y) ?? (touch.current ? L.aim : null));
     };
-    const click = () => {
+    const leave = () => {
+      L.pointer = null;
+      root.classList.remove(styles.over!);
+    };
+    const lockedClick = () => {
       if (locked()) activate(L.aim);
-      else if (!touch.current) root.requestPointerLock?.();
-      else activate(L.aim); // on touch the reticle is the only pointer there is
     };
 
-    document.addEventListener("mousemove", move);
+    document.addEventListener("mousemove", lookLocked);
     document.addEventListener("pointerlockchange", onLock);
     root.addEventListener("pointerdown", pointerDown);
     root.addEventListener("pointermove", pointerMove);
-    window.addEventListener("pointerup", pointerUp);
-    root.addEventListener("click", click);
+    root.addEventListener("pointerup", pointerUp);
+    root.addEventListener("pointercancel", pointerUp);
+    root.addEventListener("pointerleave", leave);
+    root.addEventListener("click", lockedClick);
     return () => {
-      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mousemove", lookLocked);
       document.removeEventListener("pointerlockchange", onLock);
       root.removeEventListener("pointerdown", pointerDown);
       root.removeEventListener("pointermove", pointerMove);
-      window.removeEventListener("pointerup", pointerUp);
-      root.removeEventListener("click", click);
+      root.removeEventListener("pointerup", pointerUp);
+      root.removeEventListener("pointercancel", pointerUp);
+      root.removeEventListener("pointerleave", leave);
+      root.removeEventListener("click", lockedClick);
       if (document.pointerLockElement === root) document.exitPointerLock();
     };
   }, [activate]);
@@ -861,7 +952,9 @@ function RoomScene({
         <span className={styles.hint}>
           {coarse
             ? "drag the pad to walk · drag the room to look · tap what you are aiming at"
-            : `wasd to walk · arrows or mouse to look · e takes it off the shelf · 1–${Math.min(9, places.length)} walk you there`}
+            : captured
+              ? "mouse look is on · esc gives the pointer back"
+              : `wasd to walk · drag or arrows to look · click a thing to take it · 1–${Math.min(9, places.length)} walk you there`}
         </span>
         <span className={styles.now}>
           {playing
@@ -917,6 +1010,17 @@ function RoomScene({
           ) : null}
         </div>
         <div className={styles.group}>
+          {coarse ? null : (
+            <button
+              onClick={() =>
+                captured ? document.exitPointerLock() : rootRef.current?.requestPointerLock?.()
+              }
+              title="mouse look: the pointer turns your head until you press esc (l)"
+              aria-pressed={captured}
+            >
+              {captured ? "◉ mouse look" : "◎ mouse look"}
+            </button>
+          )}
           <button
             onClick={toggleSound}
             title="room sound — footsteps, not a soundtrack"
@@ -949,32 +1053,21 @@ function RoomScene({
           aria-modal="true"
           aria-label={`watching ${playing.title}`}
         >
-          <div className={styles.theatreScreen}>
-            {/* full size, and with its own controls: this is a screen you are
-                watching, not a prop in a room, so YouTube's chrome belongs to
-                the viewer here */}
-            <iframe
-              key={`${playing.videoId}:${muted ? "m" : "s"}:big`}
-              src={embedUrl(playing.videoId, { muted })}
-              title={playing.title}
-              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-              allowFullScreen
-              referrerPolicy="strict-origin-when-cross-origin"
-            />
-          </div>
-          <p className={styles.theatreTitle}>
-            {channelLabel(channel)} · {playing.title}
-          </p>
-          <div className={styles.theatreBar}>
-            <button onClick={() => tune(-1)}>⏮ previous</button>
-            <button onClick={() => tune(1)}>⏭ next</button>
-            <button onClick={() => setMuted((m) => !m)}>{muted ? "🔇 unmute" : "🔊 mute"}</button>
-            {/* focus starts inside the screen, so the keyboard is where the eyes are */}
-            <button onClick={() => setTheatre(false)} autoFocus>
-              ↩ back to the room
-            </button>
-            <button onClick={onLeave}>✕ leave</button>
-          </div>
+          <Monitor
+            playing={playing}
+            channel={channel}
+            channels={channels}
+            muted={muted}
+            onTune={tune}
+            onTuneTo={(i) => {
+              setTvOn(true);
+              setChannel(i);
+              sound.current?.clack();
+            }}
+            onMute={() => setMuted((m) => !m)}
+            onBack={() => setTheatre(false)}
+            onLeave={onLeave}
+          />
         </div>
       ) : null}
 

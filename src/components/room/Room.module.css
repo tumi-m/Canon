@@ -11,10 +11,19 @@
   z-index: 200;
   overflow: hidden;
   background: var(--room-void);
-  cursor: crosshair;
+  cursor: default;
   touch-action: none;
   contain: strict;
 }
+/* over something you can take: the cursor says so */
+.room.over {
+  cursor: pointer;
+}
+/* turning your head with a drag */
+.room.dragging {
+  cursor: grabbing;
+}
+/* mouse look: the pointer is the camera, until esc */
 .room.look {
   cursor: none;
 }
@@ -58,67 +67,16 @@
   color: #fff;
 }
 
+/* the big screen: the set on a desk against a dark wall, lit by its own glow */
 .theatre {
   position: fixed;
   inset: 0;
   z-index: 207;
-  background: #05060a;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  padding: 3vh 3vw 12vh;
+  padding: 16px 12px 10px;
+  background:
+    radial-gradient(70% 60% at 50% 45%, rgba(70, 110, 190, 0.18), transparent 70%),
+    linear-gradient(180deg, #0b0a0c 0%, #141012 70%, #2a1c12 70.5%, #1b120c 100%);
 }
-.theatreScreen {
-  position: relative;
-  width: min(100%, calc((100vh - 22vh) * 16 / 9));
-  aspect-ratio: 16 / 9;
-  border-radius: 6px;
-  overflow: hidden;
-  background: #000;
-  box-shadow:
-    0 0 0 1px rgba(240, 226, 203, 0.12),
-    0 0 180px 40px rgba(120, 170, 255, 0.09);
-}
-.theatreScreen iframe {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: 0;
-}
-.theatreBar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  color: #f0e2cb;
-}
-.theatreBar button {
-  border: 1px solid rgba(240, 226, 203, 0.35);
-  padding: 9px 16px;
-  border-radius: 99px;
-  background: rgba(0, 0, 0, 0.5);
-  color: #f0e2cb;
-}
-.theatreBar button:hover {
-  background: var(--red);
-  border-color: var(--red);
-  color: #fff;
-}
-.theatreTitle {
-  font-family: var(--serif);
-  font-size: 1.05rem;
-  color: #fff;
-  text-align: center;
-  max-width: 60ch;
-}
-
 
 .hud {
   position: fixed;
@@ -779,30 +737,6 @@
 .theatre {
   animation: dim 0.3s ease-out both;
 }
-.theatreScreen {
-  animation: tubeOn 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-.theatreTitle,
-.theatreBar {
-  animation: rise 0.5s 0.4s var(--ease) both;
-}
-@keyframes tubeOn {
-  0% {
-    transform: scale(0.55, 0.006);
-    filter: brightness(5) saturate(0);
-    opacity: 0.2;
-  }
-  35% {
-    transform: scale(1, 0.006);
-    filter: brightness(4) saturate(0);
-    opacity: 1;
-  }
-  100% {
-    transform: none;
-    filter: none;
-  }
-}
-
 /* the hud arrives after the room does */
 .hud,
 .shelfList {

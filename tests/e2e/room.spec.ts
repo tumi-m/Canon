@@ -161,6 +161,40 @@ test.describe("the room", () => {
   });
 });
 
+test.describe("the mouse", () => {
+  test("clicking in the room never takes the cursor away", async ({ page }) => {
+    // the first click anywhere used to capture the pointer: the cursor vanished
+    await openRoom(page);
+    const view = page.viewportSize()!;
+    await page.mouse.click(view.width / 2, view.height / 3);
+    expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
+  });
+
+  test("points at something, says what it is, and a click takes it", async ({ page }) => {
+    await openRoom(page);
+    await page.keyboard.press("1");
+    await expect(page.locator("[class*=now]")).toHaveText("the ones that changed me", { timeout: 20_000 });
+    const view = page.viewportSize()!;
+    await page.mouse.move(view.width / 2, view.height / 2);
+    await expect(page.locator("[class*=aimLabel]")).toContainText("CLICK · TAKE IT OFF THE SHELF");
+    await page.mouse.click(view.width / 2, view.height / 2);
+    await expect(page.getByRole("dialog").getByText(/via JustWatch/)).toBeVisible();
+  });
+
+  test("a drag turns your head, and takes nothing", async ({ page }) => {
+    await openRoom(page);
+    await page.keyboard.press("1");
+    await expect(page.locator("[class*=now]")).toHaveText("the ones that changed me", { timeout: 20_000 });
+    const view = page.viewportSize()!;
+    await page.mouse.move(view.width / 2, view.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(view.width / 2 + 160, view.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
+  });
+});
+
 test.describe("watching and leaving", () => {
   test("the screen fills the view, and esc unwinds one layer at a time", async ({ page }) => {
     await openRoom(page);
@@ -206,6 +240,19 @@ test.describe("watching and leaving", () => {
     await expect(page.locator("[data-venue=vault]")).toHaveCount(1);
     // the shelves are renamed in the vocabulary of the building
     await expect(page.getByText("sealed").first()).toBeVisible();
+  });
+
+  test("the start menu on the big screen tunes to any channel", async ({ page }) => {
+    await openRoom(page);
+    await page.keyboard.press("t");
+    const set = page.getByRole("dialog", { name: /watching/ });
+    await set.getByRole("button", { name: "start" }).click();
+    await set.getByRole("navigation", { name: "channels" }).getByRole("button", { name: /CH 03/ }).click();
+    await expect(set.getByRole("region", { name: "the player" })).toContainText("CH 03");
+    // and the window's close button is a way back to the room
+    await set.getByRole("button", { name: "close the player" }).click();
+    await expect(set).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "let yourself out" })).toBeVisible();
   });
 
   test("coming back from the big screen leaves you where you were", async ({ page }) => {
