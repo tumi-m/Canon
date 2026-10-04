@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Entry } from "@/lib/schema";
-import { buildWorld, collide, G, nearestUnit, sectionsFor, viewpointFor } from "./world";
+import { buildWorld, collide, G, nearestUnit, reach, sectionsFor, viewpointFor } from "./world";
 import { getCanon } from "@/lib/canon";
 import { VENUES } from "./venues";
 
@@ -86,6 +86,9 @@ describe("collide", () => {
   const { boxes, bounds } = world;
 
   it("keeps you inside the room", () => {
+    // a bare building, so nothing stands between you and the walls
+    const bare = buildWorld(entries, undefined, false);
+    const { boxes, bounds } = bare;
     // near the door the right-hand wall is clear; further in, the set stands there
     expect(collide(9999, 600, boxes, bounds)[0]).toBe(bounds.xMax);
     expect(collide(-9999, 0, boxes, bounds)[0]).toBe(bounds.xMin);
@@ -247,6 +250,43 @@ describe("a canon of any size", () => {
     const entries = canonOf(a, b, c, d);
     const shelved = new Set(buildWorld(entries).units.flatMap((u) => u.sleeves.map((s) => s.entry)));
     for (let i = 0; i < entries.length; i++) expect(shelved.has(i), `piece ${i} is nowhere`).toBe(true);
+  });
+});
+
+describe("the living room", () => {
+  const world = buildWorld(entries);
+  const home = world.home!;
+
+  it("is furnished by default, and the bare buildings are not", () => {
+    expect(world.home).not.toBeNull();
+    expect(buildWorld(entries, undefined, false).home).toBeNull();
+  });
+
+  it("keeps every piece of furniture inside the walls", () => {
+    for (const piece of home.furniture) {
+      const { dx, dz } = reach(piece.width, piece.depth, piece.rot);
+      expect(Math.abs(piece.x) + dx, piece.key).toBeLessThanOrEqual(G.roomX + 0.001);
+      expect(piece.z - dz, piece.key).toBeGreaterThanOrEqual(G.backZ - 0.001);
+      expect(piece.z + dz, piece.key).toBeLessThanOrEqual(G.frontZ);
+    }
+  });
+
+  it("leaves a clear walk from the door to the bookcase", () => {
+    // straight down the middle, a stride at a time: nothing turns you aside
+    for (let z = G.spawnZ; z > world.bounds.zMin; z -= 40) {
+      expect(collide(0, z, world.boxes, world.bounds)[0], `pushed aside at z=${z}`).toBe(0);
+    }
+  });
+
+  it("puts the window in the back wall beside the bookcase, not behind it", () => {
+    const shelf = world.units[0]!;
+    expect(home.window.x - home.window.width / 2).toBeGreaterThan(shelf.fx + shelf.width / 2);
+    expect(home.window.x + home.window.width / 2).toBeLessThan(G.roomX);
+  });
+
+  it("can walk you to the noticeboard by the door", () => {
+    const at = viewpointFor(world.board, world);
+    expect(collide(at.x, at.z, world.boxes, world.bounds)).toEqual([at.x, at.z]);
   });
 });
 

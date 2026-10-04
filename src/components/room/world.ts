@@ -145,6 +145,38 @@ export type Face = Pick<Unit, "fx" | "fy" | "fz" | "rot" | "width" | "height"> &
 /** A place in the room that is not a shelf, but that you might want to go to. */
 export type Feature = Face & { readonly key: "set" | "capsule" | "board"; readonly label: string };
 
+/**
+ * A piece of furniture that is not holding the canon: what makes a room a
+ * home. Its front faces (sin rot, cos rot), and its footprint is `width`
+ * across that front and `depth` from front to back.
+ */
+export type Furnishing = {
+  readonly key:
+    | "fireplace"
+    | "sofa"
+    | "armchair"
+    | "coffee-table"
+    | "side-table"
+    | "plant-window"
+    | "plant-sofa";
+  readonly x: number;
+  readonly z: number;
+  readonly rot: number;
+  readonly width: number;
+  readonly depth: number;
+};
+
+/** The parts of a lived-in room that are architecture rather than furniture. */
+export type Home = {
+  readonly furniture: readonly Furnishing[];
+  /** a window in the back wall: its centre across, its middle (+y down), its size */
+  readonly window: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  /** the door in the front wall you came in by */
+  readonly door: { readonly x: number; readonly width: number; readonly height: number };
+  /** where the rugs lie */
+  readonly rugs: readonly { x: number; z: number; width: number; depth: number }[];
+};
+
 export type World = {
   readonly sections: readonly Section[];
   readonly units: readonly Unit[];
@@ -158,6 +190,8 @@ export type World = {
   readonly screen: Feature;
   /** the noticeboard by the door: where you pin something new to the shelves */
   readonly board: Feature;
+  /** a furnished room's furniture, window and door; null for the bare buildings */
+  readonly home: Home | null;
   readonly bounds: { xMin: number; xMax: number; zMin: number; zMax: number };
 };
 
@@ -302,9 +336,44 @@ function makeUnit(
   };
 }
 
+/**
+ * The living room: where everything stands so that nothing stands in
+ * anything else, at every size of canon. The set is on the right-hand wall;
+ * the sofa faces it with a coffee table between; the fireplace is on the
+ * left-hand wall with an armchair turned to the fire; a window in the back
+ * wall beside the bookcase; the door you came in by behind you.
+ */
+const LIVING_ROOM: Home = {
+  furniture: [
+    { key: "fireplace", x: -950, z: 0, rot: 90, width: 460, depth: 200 },
+    { key: "armchair", x: -660, z: 300, rot: -135, width: 200, depth: 200 },
+    { key: "sofa", x: 330, z: 70, rot: 90, width: 560, depth: 210 },
+    { key: "coffee-table", x: 630, z: 70, rot: 90, width: 300, depth: 150 },
+    { key: "side-table", x: 330, z: -300, rot: 90, width: 100, depth: 100 },
+    { key: "plant-window", x: 960, z: -1440, rot: 0, width: 110, depth: 110 },
+    { key: "plant-sofa", x: 330, z: 450, rot: 0, width: 90, depth: 90 },
+  ],
+  window: { x: 770, y: -60, width: 380, height: 380 },
+  door: { x: 0, width: 260, height: 470 },
+  rugs: [
+    { x: 560, z: 70, width: 760, depth: 720 },
+    { x: -760, z: 0, width: 300, depth: 440 },
+  ],
+};
+
+/** How far a footprint reaches along x and z once it is turned by rot. */
+export function reach(width: number, depth: number, rot: number): { dx: number; dz: number } {
+  const t = (rot * Math.PI) / 180;
+  const c = Math.abs(Math.cos(t));
+  const s = Math.abs(Math.sin(t));
+  return { dx: (width / 2) * c + (depth / 2) * s, dz: (width / 2) * s + (depth / 2) * c };
+}
+
 export function buildWorld(
   entries: readonly Entry[],
   shelfNames?: readonly string[],
+  /** a home with furniture in it, or a bare building: the vault and the bank are bare */
+  furnished = true,
 ): World {
   const sections = sectionsFor(entries, shelfNames);
   const units: Unit[] = [];
@@ -322,7 +391,8 @@ export function buildWorld(
   const tall = (y: number) => 2 * Math.min(y - G.ceilY, G.floorY - y) - 8;
   const spots = [
     { furniture: "shelf" as const, x: 0, y: -50, z: G.backZ + 80, rot: 0, tilt: 0, maxWidth: 1000 },
-    { furniture: "shelf" as const, x: -(G.roomX - 30), y: -50, z: -760, rot: 90, tilt: 0, maxWidth: 1000 },
+    // in a furnished room the left-hand wall shares itself with the fireplace
+    { furniture: "shelf" as const, x: -(G.roomX - 30), y: -50, z: -760, rot: 90, tilt: 0, maxWidth: furnished ? 760 : 1000 },
     { furniture: "shelf" as const, x: G.roomX - 30, y: -50, z: -760, rot: -90, tilt: 0, maxWidth: 690 },
     { furniture: "crate" as const, x: -430, y: 150, z: -120, rot: 20, tilt: -16, maxWidth: 520 },
     { furniture: "crate" as const, x: 450, y: 150, z: -170, rot: -24, tilt: -16, maxWidth: 520 },
@@ -365,16 +435,16 @@ export function buildWorld(
 
   const set: TvSet = { x: G.roomX - 90, z: 70, length: 820, depth: 170 };
 
-  /* The noticeboard stands a few steps in from the door, at the left edge of
-     what you see as you come in and turned towards you: there to be found,
-     not standing in front of the shelves. */
+  /* The noticeboard hangs on the wall by the door, where a house keeps the
+     things it means to get round to. It used to stand on an easel in the
+     middle of the floor, which is not where anybody keeps one. */
   const board: Feature = {
     key: "board",
     label: "the noticeboard",
-    fx: -470,
-    fy: G.floorY - 320,
-    fz: 150,
-    rot: 30,
+    fx: -G.roomX + 12,
+    fy: G.floorY - 330,
+    fz: 560,
+    rot: 90,
     width: 260,
     height: 190,
   };
@@ -391,6 +461,12 @@ export function buildWorld(
     z1: set.z + set.length / 2,
   });
 
+  const home = furnished ? LIVING_ROOM : null;
+  for (const piece of home?.furniture ?? []) {
+    const { dx, dz } = reach(piece.width, piece.depth, piece.rot);
+    boxes.push({ x0: piece.x - dx - 20, x1: piece.x + dx + 20, z0: piece.z - dz - 20, z1: piece.z + dz + 20 });
+  }
+
   /* hung high and away from where you come in: a pendant at eye level, a
      stride from the door, is a lamp in your face rather than a lit room */
   const lamps: Lamp[] = [
@@ -406,6 +482,7 @@ export function buildWorld(
     boxes,
     hatchZ: G.backZ + 60,
     board,
+    home,
     capsule: {
       key: "capsule",
       label: "the capsule",

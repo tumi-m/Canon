@@ -119,7 +119,7 @@ function RoomScene({
   onLeave, onBrowseList, onAdd, host, opener,
 }: Props & { host: HTMLElement; opener: React.RefObject<HTMLElement | null> }) {
   const place = useMemo(() => venueById(venue), [venue]);
-  const world = useMemo(() => buildWorld(entries, place.shelves), [entries, place]);
+  const world = useMemo(() => buildWorld(entries, place.shelves, place.furnished), [entries, place]);
   const paid = useMemo(() => new Set(services), [services]);
 
   const rootRef = useRef<HTMLDivElement>(null);

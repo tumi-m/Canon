@@ -65,6 +65,12 @@ export type Venue = {
   readonly rug: boolean;
   /** what you walk on */
   readonly floor: "boards" | "stone";
+  /**
+   * Lived in — a fireplace, a sofa, a window, the door you came in by — or a
+   * bare building. A home is the point of the den and the library; a vault
+   * with a sofa in it is not a vault.
+   */
+  readonly furnished: boolean;
 };
 
 export const VENUES: readonly Venue[] = [
@@ -81,6 +87,7 @@ export const VENUES: readonly Venue[] = [
     fixture: "pendant",
     rug: true,
     floor: "boards",
+    furnished: true,
   },
   {
     id: "library",
@@ -95,6 +102,7 @@ export const VENUES: readonly Venue[] = [
     fixture: "chandelier",
     rug: true,
     floor: "boards",
+    furnished: true,
   },
   {
     id: "vault",
@@ -109,6 +117,7 @@ export const VENUES: readonly Venue[] = [
     fixture: "strip",
     rug: false,
     floor: "stone",
+    furnished: false,
   },
   {
     id: "seedbank",
@@ -123,6 +132,7 @@ export const VENUES: readonly Venue[] = [
     fixture: "panel",
     rug: false,
     floor: "stone",
+    furnished: false,
   },
   {
     id: "cinema",
@@ -137,6 +147,7 @@ export const VENUES: readonly Venue[] = [
     fixture: "sconce",
     rug: true,
     floor: "boards",
+    furnished: false,
   },
 ];
 

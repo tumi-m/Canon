@@ -12,8 +12,10 @@ import {
   plasterTexture,
   screenTexture,
   weaveTexture,
+  wallpaperTexture,
   woodTexture,
 } from "./textures";
+import { buildHome, type HomeParts } from "./home";
 
 /**
  * The room, on the GPU.
@@ -226,7 +228,8 @@ export function buildStage(
   rug.rotation.x = -Math.PI / 2;
   rug.position.set(0, up(G.floorY) + 1, -260);
   rug.receiveShadow = true;
-  if (venue.rug) scene.add(rug);
+  // a furnished room lays its own rugs where its furniture is
+  if (venue.rug && !world.home) scene.add(rug);
 
   const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(G.roomX * 2, G.frontZ - G.backZ), ceilMat);
   ceiling.rotation.x = Math.PI / 2;
@@ -235,27 +238,51 @@ export function buildStage(
 
   const wallH = G.floorY - G.ceilY;
   const wallY = up((G.floorY + G.ceilY) / 2);
-  const addWall = (w: number, x: number, z: number, ry: number) => {
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(w, wallH), wallMat);
-    wall.position.set(x, wallY, z);
+  /* In a home the walls are papered, and each piece of wall gets its own
+     tiling so the pattern stays the same size whatever the wall's length. */
+  const wallFor = (w: number, h: number) =>
+    world.home
+      ? keep(new THREE.MeshStandardMaterial({ map: wallpaperTexture(p.wall, [w / 260, h / 260]), roughness: 0.9 }))
+      : wallMat;
+  const addWall = (w: number, x: number, z: number, ry: number, h = wallH, y = wallY) => {
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(w, h), wallFor(w, h));
+    wall.position.set(x, y, z);
     wall.rotation.y = ry;
     wall.receiveShadow = true;
+    // walls cast shadows, so light from outside comes in only where the window is
+    wall.castShadow = true;
     scene.add(wall);
   };
   const depth = G.frontZ - G.backZ;
   addWall(depth, -G.roomX, (G.frontZ + G.backZ) / 2, Math.PI / 2);
   addWall(depth, G.roomX, (G.frontZ + G.backZ) / 2, -Math.PI / 2);
-  addWall(G.roomX * 2, 0, G.backZ, 0);
+  if (world.home) {
+    // the back wall, built round the window: left of it, right of it, above, below
+    const w = world.home.window;
+    const x0 = w.x - w.width / 2;
+    const x1 = w.x + w.width / 2;
+    const top = w.y - w.height / 2; // +y down: the window's top edge
+    const bottom = w.y + w.height / 2;
+    addWall(x0 + G.roomX, (-G.roomX + x0) / 2, G.backZ, 0);
+    addWall(G.roomX - x1, (x1 + G.roomX) / 2, G.backZ, 0);
+    addWall(w.width, w.x, G.backZ, 0, top - G.ceilY, up((G.ceilY + top) / 2));
+    addWall(w.width, w.x, G.backZ, 0, G.floorY - bottom, up((bottom + G.floorY) / 2));
+  } else {
+    addWall(G.roomX * 2, 0, G.backZ, 0);
+  }
   addWall(G.roomX * 2, 0, G.frontZ, Math.PI);
 
   /* ---------- light ---------- */
   // the pendants alone leave the floor black: a decay-2 light 500 units up
   // reaches it at 1/250,000. ambient and bounce carry the room, the pendants
   // shape it.
-  scene.add(new THREE.AmbientLight(new THREE.Color(p.light), p.ambient * 1.7));
+  /* A home is lit low and in pools — the fire, a table lamp, the window — so
+     the room-wide fill comes down to let them show. */
+  const fill = world.home ? 0.62 : 1;
+  scene.add(new THREE.AmbientLight(new THREE.Color(p.light), p.ambient * 1.7 * fill));
   // sky/ground bounce: keeps the ceiling from going flat black and puts a
   // little of the floor's colour back up onto the undersides
-  const bounce = new THREE.HemisphereLight(new THREE.Color(p.light), new THREE.Color(p.floor), 0.95);
+  const bounce = new THREE.HemisphereLight(new THREE.Color(p.light), new THREE.Color(p.floor), 0.95 * fill);
   scene.add(bounce);
   // a soft key from over the shoulder so nothing is lit from one point only
   const key = new THREE.DirectionalLight(new THREE.Color(p.light), 0.5);
@@ -365,9 +392,13 @@ export function buildStage(
        This room is ~2000 units across, not 2000 millimetres: at 700 units a
        decay-2 light is attenuated by 490,000, which is why an intensity of 1
        rendered as pitch black. */
-    const light = new THREE.PointLight(new THREE.Color(p.light), candela, 5200, 2);
+    const light = new THREE.PointLight(new THREE.Color(p.light), candela * (world.home ? 0.6 : 1), 5200, 2);
     light.position.copy(at);
-    light.castShadow = true;
+    /* In a home the fire and the moon make the shadows; the pendants only
+       fill. Every shadowed light is a cube map sampled by every pixel of
+       every frame, and four of them made the den four times the cost of
+       a bare building to draw. */
+    light.castShadow = !world.home;
     light.shadow.mapSize.set(1024, 1024);
     light.shadow.bias = -0.002;
     scene.add(light);
@@ -419,6 +450,9 @@ export function buildStage(
   );
   dust.frustumCulled = false;
   scene.add(dust);
+
+  /* ---------- the home around the shelves, where there is one ---------- */
+  const homeParts: HomeParts | null = world.home ? buildHome(scene, world, p, timberMat, keep, still) : null;
 
   /* ---------- shelves and sleeves ---------- */
   const targets: THREE.Object3D[] = [];
@@ -567,6 +601,8 @@ export function buildStage(
 
   // the screen is its own light source, the way a television actually is
   const glow = new THREE.PointLight(new THREE.Color("#9fd4ff"), 0, 3000, 2);
+  // a light at zero still costs every pixel its sums; switched off, it is not drawn at all
+  glow.visible = false;
   glow.position.set(set.x - 160, TV_Y, set.z);
   scene.add(glow);
 
@@ -589,14 +625,6 @@ export function buildStage(
     accepts: { weight: 3, highlighted: false },
   } satisfies Hit;
   boardGroup.add(panel);
-  // an easel's legs, from the floor to under the board
-  const legLength = board.height / 2 + (G.floorY - board.fy);
-  for (const side of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(14, legLength, 14), timberMat);
-    leg.position.set(side * (board.width / 2 - 30), board.height / 2 - legLength / 2, -14);
-    leg.castShadow = true;
-    boardGroup.add(leg);
-  }
   scene.add(boardGroup);
   targets.push(panel);
 
@@ -702,6 +730,7 @@ export function buildStage(
         screenOn = false;
         screenMat.map = standby;
         glow.intensity = 0;
+        glow.visible = false;
       } else {
         screenOn = true;
         // the artwork if it arrived; otherwise the channel, set in type — a
@@ -717,6 +746,7 @@ export function buildStage(
             );
         screenMat.map.colorSpace = THREE.SRGBColorSpace;
         glow.intensity = 700_000;
+        glow.visible = true;
       }
       screenMat.needsUpdate = true;
     },
@@ -727,6 +757,7 @@ export function buildStage(
       if (lifted) moving.add(lifted);
     },
     tick(t, dt) {
+      homeParts?.tick(t, dt);
       for (const object of moving) if (settle(object, dt)) moving.delete(object);
       if (still) return;
 

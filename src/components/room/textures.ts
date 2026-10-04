@@ -460,3 +460,147 @@ export function boardTexture(): THREE.Texture {
   texture.anisotropy = 8;
   return texture;
 }
+
+/** Old brick, for the fireplace: soft-edged courses, mortar, a little soot. */
+export function brickTexture(): THREE.Texture {
+  return memo("brick", () => {
+    const ctx = surface(512, 512);
+    const r = rand(83);
+    ctx.fillStyle = "#3a2a22";
+    ctx.fillRect(0, 0, 512, 512);
+    const rows = 12;
+    const h = 512 / rows;
+    for (let row = 0; row < rows; row++) {
+      const offset = row % 2 ? 0 : 32;
+      for (let x = -64 + offset; x < 512; x += 64) {
+        const tone = 0.75 + r() * 0.35;
+        ctx.fillStyle = `rgb(${Math.round(128 * tone)},${Math.round(62 * tone)},${Math.round(46 * tone)})`;
+        ctx.fillRect(x + 2, row * h + 2, 60, h - 4);
+      }
+    }
+    // soot, heavier towards the middle where the fire is
+    const soot = ctx.createRadialGradient(256, 380, 20, 256, 380, 300);
+    soot.addColorStop(0, "rgba(10,6,4,0.55)");
+    soot.addColorStop(1, "rgba(10,6,4,0)");
+    ctx.fillStyle = soot;
+    ctx.fillRect(0, 0, 512, 512);
+    return finish(ctx);
+  });
+}
+
+/**
+ * Wallpaper: a quiet stripe with a small printed motif, in the wall's colour.
+ * Plaster on its own read as a showroom; this reads as somebody's house.
+ */
+export function wallpaperTexture(base: string, repeat: [number, number]): THREE.Texture {
+  return tiled(
+    memo(`paper:${base}`, () => {
+      const ctx = surface(256, 256);
+      ctx.fillStyle = base;
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.fillStyle = "rgba(255,235,205,0.06)";
+      for (let x = 0; x < 256; x += 64) ctx.fillRect(x, 0, 30, 256);
+      ctx.fillStyle = "rgba(255,230,190,0.13)";
+      for (let y = 32; y < 256; y += 64) {
+        for (let x = 15; x < 256; x += 64) {
+          ctx.beginPath();
+          ctx.moveTo(x, y - 7);
+          ctx.lineTo(x + 5, y);
+          ctx.lineTo(x, y + 7);
+          ctx.lineTo(x - 5, y);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      const r = rand(101);
+      const img = ctx.getImageData(0, 0, 256, 256);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (r() - 0.5) * 12;
+        img.data[i] = Math.max(0, Math.min(255, img.data[i]! + n));
+        img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1]! + n));
+        img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2]! + n));
+      }
+      ctx.putImageData(img, 0, 0);
+      return finish(ctx);
+    }),
+    repeat,
+  );
+}
+
+/** The night through the window: deep blue, a few stars, the moon, a roofline. */
+export function nightTexture(): THREE.Texture {
+  return memo("night", () => {
+    const ctx = surface(512, 512);
+    const sky = ctx.createLinearGradient(0, 0, 0, 512);
+    sky.addColorStop(0, "#0b1430");
+    sky.addColorStop(0.6, "#1d2f5c");
+    sky.addColorStop(1, "#3a4c78");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, 512, 512);
+    const r = rand(17);
+    for (let i = 0; i < 70; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${0.3 + r() * 0.6})`;
+      const s = r() < 0.15 ? 2 : 1;
+      ctx.fillRect(r() * 512, r() * 320, s, s);
+    }
+    const moon = ctx.createRadialGradient(360, 130, 0, 360, 130, 120);
+    moon.addColorStop(0, "rgba(255,250,230,1)");
+    moon.addColorStop(0.25, "rgba(255,250,230,0.95)");
+    moon.addColorStop(0.27, "rgba(200,215,255,0.35)");
+    moon.addColorStop(1, "rgba(200,215,255,0)");
+    ctx.fillStyle = moon;
+    ctx.fillRect(0, 0, 512, 512);
+    // the houses across the road, with a lit window or two
+    ctx.fillStyle = "#070a14";
+    ctx.beginPath();
+    ctx.moveTo(0, 430);
+    for (const [x, y] of [[60, 400], [130, 420], [180, 380], [260, 395], [330, 360], [400, 410], [470, 390], [512, 405]] as const) {
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(512, 512);
+    ctx.lineTo(0, 512);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,200,120,0.85)";
+    ctx.fillRect(200, 430, 10, 12);
+    ctx.fillRect(350, 420, 9, 11);
+    const texture = new THREE.CanvasTexture(ctx.canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  });
+}
+
+/** A leaf, with alpha: midrib, veins, a darker edge. Shared by every plant. */
+export function leafTexture(): THREE.Texture {
+  return memo("leaf", () => {
+    const ctx = surface(128, 256);
+    ctx.clearRect(0, 0, 128, 256);
+    const g = ctx.createLinearGradient(0, 0, 128, 0);
+    g.addColorStop(0, "#2f5d2a");
+    g.addColorStop(0.5, "#4f8a3a");
+    g.addColorStop(1, "#2f5d2a");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(64, 4);
+    ctx.bezierCurveTo(124, 60, 120, 190, 64, 252);
+    ctx.bezierCurveTo(8, 190, 4, 60, 64, 4);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(200,235,170,0.5)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(64, 8);
+    ctx.lineTo(64, 248);
+    ctx.stroke();
+    ctx.lineWidth = 1.5;
+    for (let y = 40; y < 230; y += 24) {
+      ctx.beginPath();
+      ctx.moveTo(64, y);
+      ctx.lineTo(24, y - 18);
+      ctx.moveTo(64, y);
+      ctx.lineTo(104, y - 18);
+      ctx.stroke();
+    }
+    const texture = new THREE.CanvasTexture(ctx.canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  });
+}
