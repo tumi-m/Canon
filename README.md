@@ -51,9 +51,11 @@ CI runs typecheck → lint → test → build → e2e on every push and PR.
   card with whose canon it is and the pieces that changed them
   (`[handle]/opengraph-image.tsx`, drawn at build time with `next/og`).
 - **the room** — somebody's den, opened from a canon and drawn on the GPU:
-  a bookcase, shelves along the walls, a record crate on the rug, lamps, dust
-  in the light, and a television that plays the canon. Five buildings to keep
-  it in.
+  a lived-in living room with the canon shelved through it, a fire with the
+  pieces that changed them most over the mantel, a television that plays the
+  canon on a 90s monitor, and — on a machine with a graphics card — a path
+  tracer that develops the room into a ray-traced still whenever you stand
+  still. Five buildings to keep it in.
 
 **What is deliberately not built:** anything needing a credential this build
 does not have — Supabase, Stripe, TMDB. There are no stubs pretending to work;
@@ -76,9 +78,11 @@ src/lib/availability.ts  where a thing can be watched, per region
 src/lib/runtime.ts     "1hr 47m" → minutes, and back
 src/lib/youtube.ts     id parsing, embeds, thumbnails, the channel dial
 src/lib/roomSound.ts   procedural footsteps — no assets, off by default
-src/components/room/   the walkable den — world.ts is the model, scene.ts the meshes
-                       and light, textures.ts the painted materials, Room.tsx the
-                       camera, the hud and everything you can press
+src/components/room/   the walkable den — world.ts is the model, scene.ts the meshes,
+                       light and passes, home.ts the furniture, atmosphere.ts the
+                       air, trace.ts the path tracer, textures.ts the painted
+                       materials, Monitor.tsx the big screen, Room.tsx the camera,
+                       the hud and everything you can press
 prototype/canon.html   the original single-file prototype, kept as reference
 ```
 
@@ -100,11 +104,21 @@ callers.
 
 ### The room
 
-Not a shop — somebody's den. The canon is shelved the way a collection
-actually lives: a bookcase on the back wall for the ones that changed you,
-shelves along the side walls, a record crate on the rug, a set on a
-sideboard, and the capsule — a strongbox with a brass plate — in the back
-corner. Dust drifts through the lamplight.
+Not a shop — somebody's living room. A sofa facing the set, a leather
+armchair turned to the fire, a coffee table with a mug going cold on it, a
+lamp on a side table, plants, a clock on the wall telling the real time, and
+a window with the night in it and the moon coming through. The canon is
+shelved through it the way a collection actually lives: a bookcase on the
+back wall, shelves along the side, a record crate on the rug, the pile you
+played to death on the coffee table, and the capsule — a strongbox with a
+brass plate — in the back corner.
+
+**A memory palace.** The pieces that changed you most are not on a shelf at
+all. They have places of their own — one framed over the mantel, two
+standing on it — each with its why written on a card beside it. A place is
+remembered better than a list, and a canon is a list of what you want
+remembered. Which piece goes where is decided by the piece, not its index,
+so adding something new does not shuffle the rest of the room.
 
 The room's code is loaded only when someone presses "step into the room"
 (and fetched the moment a hand hovers on the way there), so a canon page
@@ -113,16 +127,19 @@ does not make every visitor download three.js to read a list.
 | | |
 |---|---|
 | walk | `W A S D`, the on-screen pad, or the stick on a touch screen |
-| look | arrow keys; or click to capture the mouse, or drag; touch drags to look |
-| take something off the shelf | `E` / `Enter`, click while the reticle is on it, or tap the label on touch |
+| look | arrow keys, or drag; touch drags to look. `L` captures the mouse for mouse look, `Esc` lets it go |
+| take something off the shelf | point at it and click, or `E` / `Enter` with the reticle on it, or tap the label on touch |
 | go somewhere | click a place in the list top right, or press its number — `1`–`4` the shelves, then the set, the capsule and the noticeboard |
 | add something | look at a shelf's name board or the noticeboard and press `E` |
 | watch full size | `T`, or look at the set and press `E` |
 | change channel | `[` and `]` · `M` mutes |
+| ray tracing | stand still. `P` or the hud button turns it off and on |
 | leave | `Esc`, or the button top-left. `Esc` unwinds one layer at a time |
 
-**How it is put together.** It is three.js (`three@0.181`, the one
-dependency the room adds), in four files:
+**How it is put together.** It is three.js (`three@0.181`), with
+`three-gpu-pathtracer` and `three-mesh-bvh` for the ray-traced still — the
+only dependencies the room adds, and the tracer is fetched only the first
+time somebody stands still with it on (59 KB gzipped). In these files:
 
 - `world.ts` — the model, as pure functions: where every shelf, sleeve, the
   set and the capsule sit, the collision boxes, which shelf you are nearest,
@@ -131,13 +148,23 @@ dependency the room adds), in four files:
   one piece a tier to forty — a tier bigger than its spot can hold at full
   size gets smaller cases, never a bookcase through the ceiling or into the
   set.
-- `scene.ts` — turns the model into meshes and lights, and owns everything
-  that moves on its own (dust, the pendants' sway, the capsule's glow, the
-  set's flicker, a case easing off its shelf) behind one `tick(t, dt)`.
-- `textures.ts` — wood, plaster, weave and every sleeve cover are painted at
-  runtime into canvases. There are no image assets to ship.
-- `Room.tsx` — the camera, the frame loop, the reticle, the HUD, the card
-  and the big screen.
+- `scene.ts` — turns the model into meshes and lights, owns the passes a
+  frame goes through, and everything that moves on its own (the pendants'
+  sway, the capsule's glow, the set's flicker, a case easing off its shelf)
+  behind one `tick(t, dt)`.
+- `home.ts` — the furniture, the fireplace, the window and the moon, the
+  clock: everything that makes the den a home and holds nothing.
+- `atmosphere.ts` — the air: the fire's flames, embers, steam off the mug,
+  the moonbeam and the motes in it, dust in the lamplight, lines on the set.
+- `trace.ts` — the darkroom: the path tracer, and what it takes to show its
+  picture.
+- `textures.ts` — wood, plaster, brick, wallpaper, the night and every sleeve
+  cover are painted at runtime into canvases. There are no image assets to
+  ship.
+- `Monitor.tsx` — the big screen, drawn as the screen most of these were
+  first watched on.
+- `Room.tsx` — the camera, the frame loop, the reticle, the mouse, the HUD,
+  the card.
 
 Things worth knowing before editing it, because each one cost a debugging
 session:
@@ -156,9 +183,49 @@ session:
 4. **Shadows are drawn once.** Nothing that casts one ever moves, and each
    lamp's shadow is a cube map — six extra renders of the room. Hanging
    fittings sway, but only the fittings; the lights stay where their shadows
-   are.
-5. **Resolution follows the frame rate.** A machine that cannot hold ~30fps
-   draws fewer pixels (down to 0.6×) until it can, and earns them back.
+   are. In a home only the fire and the moon cast shadows; the pendants fill.
+5. **The picture follows the frame rate.** A machine that cannot hold ~30fps
+   gives up ambient occlusion, then resolution (down to 0.6×), then bloom,
+   counted in real seconds; a pass it has shown it cannot afford stays off
+   for the visit, and resolution is earned back.
+6. **Every mesh has one material.** The path tracer files materials per
+   mesh, and a mesh with a material array put every mesh after it in the
+   wrong one — a sign's lettering traced across the ceiling. A case is five
+   sides and a front laid on them: two meshes, two draws.
+7. **Never draw twice into a multisampled target.** three.js resolves it and
+   throws its samples away after every draw, so a second draw that builds on
+   the first gets nothing on a GPU that takes the hint. The room is drawn once
+   into its own multisampled target; everything after that is plain buffers.
+8. **Leave the tracer's `transmissiveBounces` alone.** It sizes the table of
+   random numbers from the bounce counts, and with fewer, pixels reused the
+   same numbers every pass: a maze of black that never filled in.
+9. **The air tests depth by hand.** It is drawn after the frame — raster or
+   traced — without the frame's depth buffer, so it samples the room's depth
+   texture and fades softly where it meets a surface.
+
+### The picture
+
+Moving, the room is rasterised and then goes through a short chain: the
+room drawn once, multisampled; ambient occlusion tuned to the room's scale;
+the air; bloom on anything brighter than a lamp can light; one tone map at
+the end. A desktop with a graphics card gets all of it, a phone gets bloom,
+and a software rasteriser gets the plain room in one pass.
+
+**Stand still and it develops.** After most of a second without moving, the
+darkroom (`trace.ts`) takes the frame: `three-gpu-pathtracer` traces the
+room a few tiles a frame — light bounced round it five times, soft shadows,
+the fire actually lighting the room, colour bleeding off the rug — and the
+print fades up over the raster frame through the same bloom and tone map.
+A despeckle pass at the trace's own resolution takes out single-pixel
+fireflies and the grain of the first few passes. It stops at 320 passes,
+the safelight under the hud counts them, and the first step you take puts
+the raster frame back. It is on by default with a graphics card and a mouse,
+off on phones and software rasterisers, and `P` switches it either way.
+
+**The air keeps moving.** Flames, embers, steam, the moonbeam, dust and the
+lines on the set are on a layer of their own that is never traced and always
+drawn over whatever the frame was — so in a developed still the fire still
+burns and the steam still rises off the mug.
 
 The room pauses — it is not torn down — behind the big screen, and a venue
 change rebuilds it around you rather than walking you back to the door. The
@@ -236,9 +303,14 @@ bank. Adding one is an entry in that list.
 Walking a 3D room to squint at a screen inside it is a worse way to watch
 something than just watching it. So the set in the room is the *invitation* —
 `T`, or look at it and press `E` — and what you get is the video at full size
-with the room stepped out of the way. The walk loop stops while you watch; the
-dial and the mute stay on screen, and `Esc` puts you back where you were
-standing.
+with the room stepped out of the way, on the screen most of these were first
+watched on: an off-white CRT from the end of the nineties running an XP-era
+desktop, the video in a media-player window on it. It is drawn in CSS — no
+operating system's logo, wallpaper or sound is copied — and every part of it
+works: the window's close button goes back to the room, the transport works
+the dial, the start menu lists every channel, and the tray clock tells the
+time. The walk loop stops while you watch, and `Esc` puts you back where you
+were standing.
 
 ### Sound: what the room does and does not make
 
@@ -257,12 +329,15 @@ television is on.
 a list` returns you to the canon, and if the browser will not draw WebGL — or
 loses the context mid-visit — the room says so and offers the list.
 
-**Motion.** The walk in through the door, the dust, the swaying pendants, the
-case coming up into your hands, the big screen switching on like a tube, the
-front page arriving in reading order, the wall's tiles rising as you scroll:
-all of it is decoration on top of something that already works, and all of it
-is off under `prefers-reduced-motion` — the room reads the same setting and
-holds still.
+**Motion.** The walk in through the door, the fire and its embers, steam off
+the mug, motes turning in the moonbeam, the curtains in a draught, the
+swaying pendants, the clock's second hand, the case coming up into your
+hands, its why written out a word at a time, the big screen switching on like
+a tube, the front page arriving in reading order, the wall's tiles rising as
+you scroll: all of it is decoration on top of something that already works,
+and all of it is off under `prefers-reduced-motion` — the room reads the same
+setting and holds still. The clock still tells the time; its second hand
+does not go round.
 
 **Keyboard.** The room portals to `<body>` and makes everything else `inert`,
 so Tab cycles its own controls instead of wandering into the canon behind it;
@@ -271,17 +346,22 @@ focus when it opens. `Esc` unwinds one layer at a time —
 card, then mouse capture, then the room — and leaving returns focus to whatever
 opened it. Contained while you are in it, never a trap.
 
-**Nothing in the room is set dressing.** There used to be a CD wallet and a
-shoebox of sticks holding anonymous filler, plus a couch, a coffee table and a
-side table holding nothing at all. They were cut: every sleeve on screen is now
-a real canon entry, and the only things you can walk into are the things
-holding the collection. Deleting them improved the look more than any texture
-did — they were five low-quality objects competing with the four that matter.
+**Every sleeve is real.** There used to be a CD wallet and a shoebox of
+sticks holding anonymous filler; they were cut, and every case on screen is a
+real canon entry. The furniture came back later as a home rather than a
+showroom: the coffee table carries the pile you played to death and the
+mantel the pieces that changed you most, while the sofa, the lamp, the plants
+and the clock hold nothing — they are why it feels kept rather than
+displayed. Only the furniture is solid: you walk round it, and what you see
+and what you bump into come from the same numbers in `world.ts`.
 
-**Light.** Two pendant lamps are real point lights with soft shadows; an
-ambient term, a sky/floor bounce and a soft key over the shoulder carry the
-rest, so nothing is lit from one point only. The set in the room is a light
-too, once it is on.
+**Light.** A home is lit low and in pools: the fire (flickering, and casting
+shadows), a lamp on the side table, the moon through the window with the
+window's shape on the floor, and two pendants filling. In the raster frame an
+ambient term and a sky/floor bounce stand in for light coming off every
+surface; in the traced still, that light is actually traced. Bulbs, flames,
+the screen and the night are emissive, and let shadow rays through so a light
+inside a bulb is not put out. The set is a light too, once it is on.
 
 ---
 

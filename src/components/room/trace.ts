@@ -146,6 +146,30 @@ const despeckleMaterial = () =>
     `,
   });
 
+type Disposable = { dispose?: () => void; isTexture?: boolean; renderTarget?: { dispose(): void }; tex?: { dispose(): void } };
+type Traces = { material: THREE.ShaderMaterial; dispose(): void };
+
+/**
+ * The tracer's own dispose frees its frame buffers and leaves the scene it
+ * was given on the GPU: the tree over every triangle, the array every
+ * texture was copied into, the tables of materials and lights. Tens of
+ * megabytes, left behind every time the room was rebuilt for another
+ * building.
+ */
+function release(renderer: Traces | undefined) {
+  if (!renderer) return;
+  for (const { value } of Object.values(renderer.material.uniforms)) {
+    const held = value as Disposable | null;
+    if (!held || typeof held !== "object") continue;
+    // a texture that is the face of a render target goes with its target
+    if (held.isTexture && held.renderTarget) held.renderTarget.dispose();
+    else held.dispose?.();
+    held.tex?.dispose();
+  }
+  renderer.material.dispose();
+  renderer.dispose();
+}
+
 export function createDarkroom(room: Scene, onChange: () => void): Darkroom {
   let tracer: WebGLPathTracer | null = null;
   let state: DarkroomState = "loading";
@@ -272,7 +296,12 @@ export function createDarkroom(room: Scene, onChange: () => void): Darkroom {
     },
     dispose() {
       disposed = true;
-      tracer?.dispose();
+      if (tracer) {
+        const inner = tracer as unknown as { _pathTracer?: Traces; _lowResPathTracer?: Traces };
+        tracer.dispose();
+        release(inner._pathTracer);
+        release(inner._lowResPathTracer);
+      }
       tracer = null;
       despeckle.dispose();
       despeckle.material.dispose();

@@ -15,7 +15,7 @@ milestone; update it before finishing one.
 | **M3 · Entries & the text view** | 🟡 the view is built and server-rendered. The **add-a-link flow is built end to end but saves drafts to the browser only** (`src/lib/drafts.ts`) — the save needs M1/M2. Metadata resolution and reordering are not built |
 | **M3.5 · YouTube** | ✅ id parsing, embeds, thumbnails, and the channel dial in the room |
 | **M4 · Availability layer** | 🟡 the shape is built (per-region offers, per-item attribution, no synthesised deep links); the live TMDB fetch and Redis cache are not — **blocked**: needs `TMDB_API_KEY` |
-| **M5 · The room** | ✅ shipping — a den drawn with three.js (moved off CSS 3D), five venues with their own fittings and floors, the television, places you can walk to from a list, motion throughout; loaded only when opened |
+| **M5 · The room** | ✅ shipping — a lived-in den drawn with three.js: furniture, a fire, a memory palace over the mantel, five venues, the television on a 90s monitor, point-and-click mouse, bloom and ambient occlusion, a path-traced still when you stand still, air that keeps moving over it; loaded only when opened |
 | **M6 · Audiences, invites, capsules** | 🟡 the *shapes* exist in `src/lib/schema.ts`; **nothing is enforced** — blocked on M1 |
 | **M7 · Membership** | ⬜ not started — **blocked**: needs Stripe keys |
 | **M8 · Regional archive** | ⬜ not started |
@@ -35,13 +35,18 @@ accounts:
 - `/[handle]` — a canon, statically generated, server-rendered, readable with
   javascript switched off. Region is a query param (`?region=us`), so switching
   region is a plain link and stays shareable.
-- `/[handle]` → **the room** — a walkable den drawn with three.js: a bookcase
-  for the ones that changed you, shelves along the walls, a record crate on
-  the rug, lamps with real light and shadow, dust in the air. Lives in
+- `/[handle]` → **the room** — a walkable den drawn with three.js: a living
+  room with the canon shelved through it, the pieces that changed you most
+  framed over the fire with their whys beside them (the memory palace), the
+  television, a clock telling the real time. Moving, it is rasterised with
+  bloom and ambient occlusion; standing still, `three-gpu-pathtracer`
+  develops it into a ray-traced still; the air — fire, embers, steam, the
+  moonbeam, dust — is drawn over either and never stops. Lives in
   `src/components/room/` and mounts on demand, so it costs nothing to anyone
-  who never opens it. The renderer moved off CSS 3D because every bug the old
-  one grew came from having no depth buffer, no lights and a fixed eye plane;
-  `world.ts`, the model, did not change.
+  who never opens it; the tracer is fetched only when first used. The
+  renderer moved off CSS 3D because every bug the old one grew came from
+  having no depth buffer, no lights and a fixed eye plane; `world.ts`, the
+  model, did not change.
 
 **The sharing model,** as shapes only. Canon is not a public feed: a room is
 yours and you name who walks into it. `audienceSchema` carries `private` /
@@ -78,45 +83,55 @@ anything. A capsule that is only sealed in a component is not sealed.
 2. **M1 is the one that matters.** Nothing in
    `src/lib/schema.ts` is the security boundary — RLS is. The zod schemas exist
    so the API and the UI agree with the DB, not instead of it.
-2. **The audience model needs the RLS predicate, not a component.** The four
+3. **The audience model needs the RLS predicate, not a component.** The four
    audiences map onto the `tier` column and `can_view_shelf` in PLAN §7:
    `private` → owner only, `invited` → the invite list, `household` → a shared
    canon's members, `everyone` → tier 0. The capsule adds the `unseal_at` clause
    the plan already has — and the negative test that matters is that an invitee
    gets **zero rows** from a capsule before its date, not a blurred teaser.
-3. **The three-place rule is half-wired.** `WHY_MAX` (200) and `NOTE_MAX` (300)
+4. **The three-place rule is half-wired.** `WHY_MAX` (200) and `NOTE_MAX` (300)
    live in `src/lib/schema.ts` and are used by the schema and the UI. The M1
    migration must carry the same numbers as `CHECK` constraints — that is the
    third place, and it is the one that counts.
-4. **`src/lib/availability.ts` is shaped for the real TMDB response.** M4
+5. **`src/lib/availability.ts` is shaped for the real TMDB response.** M4
    replaces the seed table, not the callers. Two things must survive that swap:
    the per-item JustWatch credit (`ATTRIBUTION`, asserted in both the unit and
    e2e suites) and the rule that a click target is a TMDB watch page, never a
    synthesised provider deep link.
-5. **The room's model is pure and tested** (`src/components/room/world.ts`),
-   and the renderer is `scene.ts`. The README lists the traps that each cost a
-   session — `world.ts` is `+y` down and three.js `+y` up, lights are in
-   candela at the room's scale, shadows are drawn once — read those before
-   moving anything.
-6. **The layout is tested against canons of every size, not just the seed
+6. **The room's model is pure and tested** (`src/components/room/world.ts`),
+   and the renderer is `scene.ts`. The README lists nine traps that each cost
+   a session — `world.ts` is `+y` down and three.js `+y` up, lights are in
+   candela at the room's scale, shadows are drawn once, one material per
+   mesh for the tracer, never two draws into a multisampled target, leave the
+   tracer's `transmissiveBounces` alone — read those before moving anything.
+7. **The path tracer works round two of its own bugs**, both in
+   `three-gpu-pathtracer@0.0.24`: it mis-files materials after any mesh with
+   a material array, and it under-sizes its random-number table when the
+   bounce counts are lowered. If the dependency is upgraded, those
+   workarounds are worth re-checking rather than assuming; and its own
+   `dispose()` leaves its scene on the GPU, so `trace.ts` frees that itself.
+8. **The layout is tested against canons of every size, not just the seed
    one.** `world.test.ts` generates canons from one piece a tier to forty and
    checks that nothing leaves the room, nothing stands inside anything else
    and every piece is shelved. When profiles come from the database, that is
    the test that says a real person's canon will fit.
-7. **Adding a link works, but only as a local draft.** The form, the signs
+9. **Adding a link works, but only as a local draft.** The form, the signs
    in the room and the "on this device" panel are real; what they save goes
    to `localStorage` under `canon:drafts:<handle>`, is re-validated whenever
    it is read back, and is labelled a draft everywhere it appears. When M2
    lands, `newLinkSchema` is already the input shape for the server action:
    swap `saveDrafts` for the action, and offer to move existing drafts into
    the signed-in person's canon. Do not let a draft look saved before then.
-8. **Commit before you stop.** A whole session's renderer rewrite was once
+10. **Commit before you stop.** A whole session's renderer rewrite was once
    lost uncommitted when the cloud container was reclaimed, and had to be
    rebuilt from the transcript. Push at every green point.
-9. **Two things this environment could not verify.** YouTube's CDN is
-   unreachable from the sandbox, so no thumbnail and no embed has been *seen*
-   to load — the wiring is unit-tested, the network path is not. And frame rate
-   on real hardware is still unmeasured: everything has been driven headless,
-   where Chromium software-rasterises at a few fps. The room now lowers its
-   own resolution when frames run slow, so the headless screenshots are softer
-   than a real GPU will draw. Both want a look on the first real deploy.
+11. **What this environment could not verify.** YouTube's CDN is
+    unreachable from the sandbox, so no thumbnail has been seen to load here
+    (the embed has: a production screenshot showed it playing on the big
+    screen). Frame rate on real hardware is unmeasured: everything has been
+    driven headless on a software rasteriser, which the room detects and
+    gives the plain picture. Bloom, ambient occlusion and the path tracer
+    were checked by telling the room the GPU was real — correct, but at
+    seconds a frame — so how fast a print develops on an actual graphics
+    card, and whether the 320-pass cap and tile counts are right for one,
+    want a look on the first real deploy.

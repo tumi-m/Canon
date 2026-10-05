@@ -398,10 +398,14 @@ function RoomScene({
       const fit = () => {
         stage.resize(window.innerWidth, window.innerHeight, dpr);
       };
-      const adapt = (dt: number) => {
+      /** `elapsed` is the real time since the last frame, however long that was */
+      const adapt = (elapsed: number) => {
         // a single hitch — a shader compiling, a cover decoding — is not a slow machine
-        pace += (Math.min(dt, 0.1) - pace) * 0.08;
-        settle -= dt;
+        pace += (Math.min(elapsed, 0.1) - pace) * 0.08;
+        /* Settling is counted in real seconds, not in the clamped step the
+           walk uses: at three seconds a frame the room used to take a minute
+           of wall-clock time to notice it was slow. */
+        settle -= elapsed;
         if (settle > 0) return;
         if (pace > 1 / 28) {
           if (quality === 2) quality = 1;
@@ -427,8 +431,9 @@ function RoomScene({
       const report = () => {
         const d = darkroom;
         const showing = d && (d.state === "developing" || d.state === "developed");
-        // a re-render every few passes, not every frame
-        const key = showing ? `${d.state}:${Math.floor(d.samples / 4)}` : "";
+        // every pass while they are slow to come, then every few: a re-render a pass is not worth it
+        const passes = Math.floor(d?.samples ?? 0);
+        const key = showing ? `${d.state}:${passes < 16 ? passes : passes >> 2}` : "";
         if (key === shown) return;
         shown = key;
         // the tracer counts a pass a tile at a time; a print is in whole passes
@@ -565,7 +570,8 @@ function RoomScene({
            and let an honestly slow frame integrate at its real length. Capping
            at a tenth of a second meant anything under 10fps walked in slow
            motion, which is exactly the machine that can least afford it. */
-        const dt = Math.min(0.25, (t - L.last) / 1000 || 0.016);
+        const elapsed = (t - L.last) / 1000 || 0.016;
+        const dt = Math.min(0.25, elapsed);
         L.last = t;
         step(dt);
 
@@ -633,7 +639,7 @@ function RoomScene({
           darkroom?.stop();
         }
         // the tracer's frames are paced by the tracer: they say nothing about the raster
-        if (!developing) adapt(dt);
+        if (!developing) adapt(elapsed);
         stage.render(dt, developing && darkroom ? darkroom : undefined);
         L.raf = requestAnimationFrame(loop);
       };
