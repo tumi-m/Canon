@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
 import { G, type Furnishing, type World } from "./world";
 import type { Palette } from "./venues";
 import { brickTexture, leafTexture, nightTexture, weaveTexture } from "./textures";
+import { lightSource } from "./trace";
 
 /**
  * The furniture that makes the den a home: a sofa facing the set, a leather
@@ -88,36 +89,10 @@ export function buildHome(
   const brick = keep(new THREE.MeshStandardMaterial({ map: brickTexture(), roughness: 0.9 }));
   const slate = keep(new THREE.MeshStandardMaterial({ color: "#2c2c2e", roughness: 0.7 }));
   const soot = keep(new THREE.MeshStandardMaterial({ color: "#0b0807", roughness: 1 }));
-  const flameMat = keep(
-    new THREE.MeshStandardMaterial({
-      color: "#000000",
-      emissive: new THREE.Color("#ff9a3c"),
-      emissiveIntensity: 2.6,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-      toneMapped: false,
-    }),
-  );
-  const coreMat = keep(
-    new THREE.MeshStandardMaterial({
-      color: "#000000",
-      emissive: new THREE.Color("#ffe39a"),
-      emissiveIntensity: 3,
-      transparent: true,
-      opacity: 0.95,
-      depthWrite: false,
-      toneMapped: false,
-    }),
-  );
-  const lampGlow = keep(
-    new THREE.MeshStandardMaterial({
-      color: "#000000",
-      emissive: new THREE.Color(p.light),
-      emissiveIntensity: 2.2,
-      toneMapped: false,
-    }),
-  );
+  // flames and the bulb are where the light comes from: shadow rays go through them
+  const flameMat = keep(lightSource("#ff9a3c", 2.6, { transparent: true, opacity: 0.9, depthWrite: false }));
+  const coreMat = keep(lightSource("#ffe39a", 3, { transparent: true, opacity: 0.95, depthWrite: false }));
+  const lampGlow = keep(lightSource(p.light, 2.6));
   const shade = keep(
     new THREE.MeshStandardMaterial({
       color: "#e9dcc0",
@@ -291,7 +266,8 @@ export function buildHome(
   const wz = G.backZ;
   const night = new THREE.Mesh(
     new THREE.PlaneGeometry(win.width, win.height),
-    keep(new THREE.MeshBasicMaterial({ map: nightTexture(), toneMapped: false })),
+    // the night gives light too — a little, and blue — and lets the moon's through
+    keep(lightSource("#ffffff", 1, { emissiveMap: nightTexture() })),
   );
   night.position.set(win.x, wy, wz - 34);
   scene.add(night);

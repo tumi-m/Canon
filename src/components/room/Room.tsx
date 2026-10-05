@@ -9,7 +9,8 @@ import { offersFor, regionName } from "@/lib/availability";
 import { channelLabel, channelsFrom, surf, thumbnailFor, thumbnailForEntry } from "@/lib/youtube";
 import { createRoomSound, STRIDE, type RoomSound } from "@/lib/roomSound";
 import { artFor, buildWorld, collide, G, nearestUnit, viewpointFor, type Face, type Pose } from "./world";
-import { buildStage, hitOf, type Hit, type Screen, type Stage } from "./scene";
+import { buildStage, hitOf, type Hit, type Quality, type Screen, type Stage } from "./scene";
+import { createDarkroom, FULL_EXPOSURE, type Darkroom, type DarkroomState } from "./trace";
 import { VENUES, venueById, type VenueId } from "./venues";
 import { AddLinkForm } from "../AddLink";
 import Monitor from "./Monitor";
@@ -89,6 +90,31 @@ const TURN = 108;
 /** how close a shelf has to be before the badge says you are at it */
 const NEAR_SHELF = 620;
 
+/** seconds of standing still before the room starts to develop */
+const STILL = 0.8;
+
+/** Has the view changed — by more than the drift of a settling footstep? */
+const sameMatrix = (a: THREE.Matrix4, b: THREE.Matrix4) => {
+  for (let i = 0; i < 16; i++) if (Math.abs(a.elements[i]! - b.elements[i]!) > 1e-3) return false;
+  return true;
+};
+
+/**
+ * Is this a software rasteriser — no graphics card, or one the browser will
+ * not use? Those draw the plain room: the passes after it, and the path
+ * tracer most of all, are seconds a frame there.
+ */
+const softwareGl = (renderer: THREE.WebGLRenderer) => {
+  const context = renderer.getContext();
+  let name = String(context.getParameter(context.RENDERER));
+  // chrome only names the hardware through the debug extension
+  if (/webkit|mozilla/i.test(name)) {
+    const info = context.getExtension("WEBGL_debug_renderer_info");
+    if (info) name = String(context.getParameter(info.UNMASKED_RENDERER_WEBGL));
+  }
+  return /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
+};
+
 /**
  * The room is portalled to <body> rather than rendered where it is mounted.
  * It has to be: making the rest of the page inert means walking body's
@@ -148,6 +174,17 @@ function RoomScene({
   const [adding, setAdding] = useState<Accepts | null>(null);
   /** the room is drawn on the gpu; say which of the three states it is in */
   const [gl, setGl] = useState<"loading" | "ready" | "failed">("loading");
+  /** stand still and the room is path traced — on by default where the machine can carry it */
+  const [stills, setStills] = useState(false);
+  const stillsRef = useRef(false);
+  /** once somebody has switched it themselves, a new building does not switch it back */
+  const stillsChosen = useRef(false);
+  const toggleStills = useCallback(() => {
+    stillsChosen.current = true;
+    setStills((on) => !on);
+  }, []);
+  /** how far the print has come, while there is one */
+  const [print, setPrint] = useState<{ state: DarkroomState; samples: number } | null>(null);
   /** the curtain stays down while the room builds, then lifts rather than vanishing */
   const [curtainUp, setCurtainUp] = useState(false);
   useEffect(() => {
@@ -318,10 +355,23 @@ function RoomScene({
       // cap the pixel ratio: a 3x phone display is three times the pixels for
       // no visible gain in a room this dim
       const sharpest = Math.min(window.devicePixelRatio || 1, 2);
-      /* Resolution follows the frame rate. A machine that cannot hold ~30fps
-         at full resolution draws fewer pixels until it can, and earns them
-         back once it is comfortably quick again. A slightly softer room is
-         a far better trade than one that stutters every time you turn. */
+      /* The picture starts as good as the machine is likely to manage: every
+         pass on a desktop with a graphics card, bloom without occlusion on a
+         phone, the plain room on a software rasteriser. */
+      const software = softwareGl(stage.renderer);
+      let quality: Quality = software ? 0 : touch.current ? 1 : 2;
+      stage.setQuality(quality);
+      if (!stillsChosen.current) {
+        const traceable = !software && !touch.current;
+        stillsRef.current = traceable;
+        setStills(traceable);
+      }
+      /* Then it follows the frame rate. A machine that cannot hold ~30fps
+         gives up ambient occlusion first, then resolution, then bloom, and
+         earns resolution back once it is comfortably quick again. A pass it
+         has shown it cannot afford stays off for the visit, so the room does
+         not flicker between two looks. A slightly plainer room is a far
+         better trade than one that stutters every time you turn. */
       let dpr = sharpest;
       let pace = 1 / 60;
       let settle = 1.5;
@@ -329,12 +379,18 @@ function RoomScene({
         stage.resize(window.innerWidth, window.innerHeight, dpr);
       };
       const adapt = (dt: number) => {
-        pace += (dt - pace) * 0.08;
+        // a single hitch — a shader compiling, a cover decoding — is not a slow machine
+        pace += (Math.min(dt, 0.1) - pace) * 0.08;
         settle -= dt;
         if (settle > 0) return;
-        if (pace > 1 / 28 && dpr > 0.6) {
-          dpr = Math.max(0.6, dpr * 0.75);
-          fit();
+        if (pace > 1 / 28) {
+          if (quality === 2) quality = 1;
+          else if (dpr > 0.6) {
+            dpr = Math.max(0.6, dpr * 0.75);
+            fit();
+          } else if (quality === 1) quality = 0;
+          else return;
+          stage.setQuality(quality);
           settle = 1;
         } else if (pace < 1 / 55 && dpr < sharpest) {
           dpr = Math.min(sharpest, dpr * 1.2);
@@ -343,6 +399,26 @@ function RoomScene({
         }
       };
       fit();
+
+      /* ---------- the darkroom ----------
+         Fetched the first time you stand still with stills on, not before. */
+      let darkroom: Darkroom | null = null;
+      let shown = "";
+      const report = () => {
+        const d = darkroom;
+        const showing = d && (d.state === "developing" || d.state === "developed");
+        // a re-render every few passes, not every frame
+        const key = showing ? `${d.state}:${Math.floor(d.samples / 4)}` : "";
+        if (key === shown) return;
+        shown = key;
+        // the tracer counts a pass a tile at a time; a print is in whole passes
+        setPrint(showing ? { state: d.state, samples: Math.floor(d.samples) } : null);
+      };
+      const view = new THREE.Matrix4();
+      // a resized window changes the lens without moving the eye
+      const lens = new THREE.Matrix4();
+      let seen = -1;
+      let stillFor = 0;
       window.addEventListener("resize", fit);
 
       const raycaster = new THREE.Raycaster();
@@ -424,6 +500,11 @@ function RoomScene({
           const k = Math.min(1, dt * (reduced.current ? 40 : 9));
           L.vx += (tx - L.vx) * k;
           L.vz += (tz - L.vz) * k;
+          // come to a stop, rather than creep towards one forever: standing still is a state
+          if (!mag && Math.hypot(L.vx, L.vz) < 2) {
+            L.vx = 0;
+            L.vz = 0;
+          }
           const [nx, nz] = collide(L.x + L.vx * dt, L.z + L.vz * dt, world.boxes, world.bounds);
           L.x = nx;
           L.z = nz;
@@ -466,7 +547,6 @@ function RoomScene({
            motion, which is exactly the machine that can least afford it. */
         const dt = Math.min(0.25, (t - L.last) / 1000 || 0.016);
         L.last = t;
-        adapt(dt);
         step(dt);
 
         // the reticle is a real ray now: no cones, no thresholds, no hysteresis
@@ -511,7 +591,30 @@ function RoomScene({
         }
 
         stage.tick(t / 1000, dt);
-        stage.renderer.render(stage.scene, stage.camera);
+
+        /* Standing still — nothing you are doing moves the view, nothing in
+           the room is sliding about — for long enough, the darkroom takes
+           over the frame. The first step hands it back. */
+        stage.camera.updateMatrixWorld();
+        const moved =
+          !sameMatrix(stage.camera.matrixWorld, view) ||
+          !sameMatrix(stage.camera.projectionMatrix, lens) ||
+          stage.version !== seen;
+        view.copy(stage.camera.matrixWorld);
+        lens.copy(stage.camera.projectionMatrix);
+        seen = stage.version;
+        stillFor = moved ? 0 : stillFor + dt;
+        let developing = false;
+        if (stillsRef.current && stillFor > STILL) {
+          darkroom ??= createDarkroom(stage, report);
+          developing = darkroom.develop(dt);
+          if (developing && L.frame % 10 === 0) report();
+        } else {
+          darkroom?.stop();
+        }
+        // the tracer's frames are paced by the tracer: they say nothing about the raster
+        if (!developing) adapt(dt);
+        stage.render(dt, developing && darkroom ? darkroom : undefined);
         L.raf = requestAnimationFrame(loop);
       };
 
@@ -524,6 +627,8 @@ function RoomScene({
         window.removeEventListener("resize", fit);
         canvas.removeEventListener("webglcontextlost", lost);
         pickRef.current = null;
+        darkroom?.dispose();
+        setPrint(null);
         stage.dispose();
         stageRef.current = null;
       };
@@ -558,6 +663,11 @@ function RoomScene({
       live.current.look = { x: 0, y: 0 };
     }
   }, [watching]);
+
+  useEffect(() => {
+    stillsRef.current = stills;
+    if (!stills) setPrint(null);
+  }, [stills]);
 
   /* Anything over the room gives the pointer back. With the mouse still
      captured, the cursor stayed hidden and a card's own buttons could not
@@ -657,6 +767,10 @@ function RoomScene({
         setMuted((m) => !m);
         return;
       }
+      if (k === "p") {
+        toggleStills();
+        return;
+      }
       if (k === "escape") {
         // the Esc that let go of mouse look is not a request to leave the room
         if (performance.now() - releasedAt.current < 400) return;
@@ -693,7 +807,7 @@ function RoomScene({
       document.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
     };
-  }, [activate, adding, capsule, channels.length, goTo, onLeave, opened, places, theatre, tune]);
+  }, [activate, adding, capsule, channels.length, goTo, onLeave, opened, places, theatre, toggleStills, tune]);
 
   /* ---------- the mouse ----------
      The mouse works the way it does on any page: point at something and it
@@ -898,6 +1012,18 @@ function RoomScene({
 
       <div className={styles.dust} />
       <div className={styles.vign} />
+      {/* the darkroom's safelight: how far the print has come */}
+      {print && !covered ? (
+        <div className={styles.print} aria-hidden="true">
+          <span className={`${styles.safelight} ${print.state === "developed" ? styles.safelightDone : ""}`} />
+          {print.state === "developed" ? "ray traced" : "developing"} · {print.samples}{" "}
+          {print.samples === 1 ? "pass" : "passes"}
+          <span
+            className={styles.printBar}
+            style={{ transform: `scaleX(${Math.min(print.samples, FULL_EXPOSURE) / FULL_EXPOSURE})` }}
+          />
+        </div>
+      ) : null}
       <div className={`${styles.retic} ${aimLabel ? styles.reticHot : ""}`} />
       {aimLabel && !covered ? (
         coarse ? (
@@ -1020,6 +1146,16 @@ function RoomScene({
               aria-pressed={captured}
             >
               {captured ? "◉ mouse look" : "◎ mouse look"}
+            </button>
+          )}
+          {/* a phone would spend its battery on it: the tracer is for machines on a desk */}
+          {coarse ? null : (
+            <button
+              onClick={toggleStills}
+              title="stand still for a moment and the room is path traced: real light, bounced round the room (p)"
+              aria-pressed={stills}
+            >
+              {stills ? "◉ ray tracing" : "○ ray tracing"}
             </button>
           )}
           <button

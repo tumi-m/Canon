@@ -1,4 +1,10 @@
 import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { Pass } from "three/examples/jsm/postprocessing/Pass.js";
 import type { Entry } from "@/lib/schema";
 import { channelsFrom, thumbnailForEntry } from "@/lib/youtube";
 import { G, GAP, hash, type Accepts, type Unit, type World } from "./world";
@@ -18,6 +24,7 @@ import {
   woodTexture,
 } from "./textures";
 import { buildHome, type HomeParts } from "./home";
+import { lightSource, type FrameSource } from "./trace";
 
 /**
  * The room, on the GPU.
@@ -66,12 +73,31 @@ export type Screen =
       readonly image: HTMLImageElement | null;
     };
 
+/**
+ * How much of the picture this machine can afford, cheapest first.
+ *  0 — the scene as it is drawn, straight to the screen
+ *  1 — light that blooms: bulbs, flames and the set glow past their edges
+ *  2 — and ambient occlusion: the shadow that gathers in every corner and
+ *      under everything that stands on something
+ */
+export type Quality = 0 | 1 | 2;
+
 export type Stage = {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   readonly renderer: THREE.WebGLRenderer;
   /** everything the reticle can land on */
   readonly targets: THREE.Object3D[];
+  /**
+   * Goes up whenever something changes that a still of the room would have
+   * to be taken again for: a case sliding off its shelf, the set changing
+   * channel, a cover arriving. Ambient motion — dust, flicker — does not count.
+   */
+  readonly version: number;
+  readonly quality: Quality;
+  setQuality(quality: Quality): void;
+  /** draw a frame — from the rasteriser, or from `source` (the darkroom) if given */
+  render(dt: number, source?: FrameSource): void;
   /** what the set in the room is showing: nothing, or a channel */
   setScreen(state: Screen): void;
   /** lift whatever the reticle is on, and drop whatever it left */
@@ -98,6 +124,40 @@ export function hitOf(object: THREE.Object3D | null): Hit | null {
     node = node.parent;
   }
   return null;
+}
+
+/**
+ * A box with a front and five sides that are not the front — a case, a sign,
+ * the capsule — as the five sides, and the front laid on them as a mesh of
+ * its own. A box with a material per face is drawn once per face, and the
+ * cases alone were most of nine hundred draw calls a frame; this is two.
+ *
+ * Two meshes rather than one with two materials, because the path tracer
+ * files materials by mesh: everything after a mesh with more than one
+ * material was traced in somebody else's, and a sign's lettering came out
+ * across the ceiling.
+ */
+function frontedBox(
+  width: number,
+  height: number,
+  depth: number,
+  sides: THREE.Material,
+  front: THREE.Material,
+): { box: THREE.Mesh; face: THREE.Mesh } {
+  const geometry = new THREE.BoxGeometry(width, height, depth);
+  const index = Array.from(geometry.getIndex()!.array);
+  // faces are +x, −x, +y, −y, +z, −z, six indices each: +z is the front
+  geometry.setIndex([...index.slice(0, 24), ...index.slice(30, 36)]);
+  geometry.clearGroups();
+  const box = new THREE.Mesh(geometry, sides);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(width, height), front);
+  face.position.z = depth / 2;
+  box.add(face);
+  for (const part of [box, face]) {
+    part.castShadow = true;
+    part.receiveShadow = true;
+  }
+  return { box, face };
 }
 
 /** How deep the carcass is. A crate is a shallow box you flip through. */
@@ -135,6 +195,22 @@ function buildUnit(unit: Unit, timber: THREE.Material, board: THREE.Material): T
     group.add(plank);
   }
   return group;
+}
+
+/**
+ * The first pass of a frame that comes from somewhere other than the
+ * rasteriser — the darkroom's print. It draws where the scene pass would
+ * have, so bloom and tone mapping treat a traced frame like any other.
+ */
+class SourcePass extends Pass {
+  source: FrameSource | null = null;
+  constructor() {
+    super();
+    this.needsSwap = false;
+  }
+  override render(renderer: THREE.WebGLRenderer, _write: THREE.WebGLRenderTarget, read: THREE.WebGLRenderTarget) {
+    this.source?.draw(renderer, read);
+  }
 }
 
 /** Ease a value toward a target at a rate that does not depend on frame rate. */
@@ -298,7 +374,8 @@ export function buildStage(
      building would actually have: a shade on a cord, an iron ring of candle
      bulbs, a fluorescent tube, a panel in the ceiling, a lamp on the wall. */
   const pendants: { group: THREE.Group; phase: number }[] = [];
-  const glowMat = keep(new THREE.MeshBasicMaterial({ color: new THREE.Color(p.light), toneMapped: false }));
+  // bright enough to bloom: a bulb is the brightest thing in the room
+  const glowMat = keep(lightSource(p.light, 3.2));
   const ironMat = keep(new THREE.MeshStandardMaterial({ color: "#16110e", roughness: 0.7, metalness: 0.45 }));
   const shadeMat = keep(
     new THREE.MeshStandardMaterial({ color: p.timber, side: THREE.DoubleSide, roughness: 0.5 }),
@@ -462,7 +539,7 @@ export function buildStage(
   const targets: THREE.Object3D[] = [];
   const coverMaterials: THREE.Material[] = [];
   /** sleeve → the image we would like on its cover, once it arrives */
-  const pending: { mesh: THREE.Mesh; entry: Entry; hue: number }[] = [];
+  const pending: { material: THREE.MeshStandardMaterial; entry: Entry; hue: number }[] = [];
 
   for (const unit of world.units) {
     const group = buildUnit(unit, timberMat, boardMat);
@@ -477,9 +554,7 @@ export function buildStage(
     const crate = unit.furniture === "crate";
     const signW = Math.min(unit.width - 30, crate ? 300 : 480);
     const signFace = keep(new THREE.MeshStandardMaterial({ map: keep(signTexture(unit.label, p.timber)), roughness: 0.6 }));
-    const sign = new THREE.Mesh(new THREE.BoxGeometry(signW, signW * (150 / 1024), 8), [
-      timberMat, timberMat, timberMat, timberMat, signFace, timberMat,
-    ]);
+    const { box: sign } = frontedBox(signW, signW * (150 / 1024), 8, timberMat, signFace);
     const signDepth = depthOf(unit);
     sign.position.set(0, crate ? unit.height / 2 + 34 : -unit.height / 2 - 44, signDepth / 2 - 6);
     sign.userData["hit"] = {
@@ -519,9 +594,7 @@ export function buildStage(
       coverMaterials.push(cover);
 
       // a case has a front, and five sides that are not the front
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.w, size.h, 22), [
-        caseSide, caseSide, caseSide, caseSide, cover, caseSide,
-      ]);
+      const { box: mesh } = frontedBox(size.w, size.h, 22, caseSide, cover);
       // local offsets inside the unit, from the same numbers world.ts reports
       /* Stood in its carcass, not in front of it: a case is 22 deep, so its
          front proudmost face sits just inside the mouth of whatever holds it.
@@ -539,8 +612,6 @@ export function buildStage(
       } else {
         mesh.position.set(sleeve.left + slot.w / 2 - unit.width / 2, up(sleeve.y - unit.fy), stand);
       }
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
       mesh.userData["hit"] = {
         kind: "sleeve",
         key: sleeve.key,
@@ -551,7 +622,7 @@ export function buildStage(
       mesh.userData["rest"] = mesh.position.z;
       group.add(mesh);
       targets.push(mesh);
-      pending.push({ mesh, entry, hue });
+      pending.push({ material: cover, entry, hue });
     }
   }
 
@@ -575,7 +646,8 @@ export function buildStage(
       false,
     ),
   );
-  const screenMat = keep(new THREE.MeshBasicMaterial({ map: standby, toneMapped: false }));
+  // the picture is light, not paint: it shows in the dark and lights the room
+  const screenMat = keep(lightSource("#ffffff", 1.15, { emissiveMap: standby }));
   const tv = new THREE.Group();
   const cabinetMat = keep(new THREE.MeshStandardMaterial({ color: "#1c1714", roughness: 0.42, metalness: 0.1 }));
   const bezel = new THREE.Mesh(new THREE.BoxGeometry(780, 460, 70), cabinetMat);
@@ -585,10 +657,7 @@ export function buildStage(
   screen.position.z = 36;
   tv.add(screen);
   // the standby light: the one sign a switched-off set is plugged in
-  const led = new THREE.Mesh(
-    new THREE.SphereGeometry(5, 10, 8),
-    keep(new THREE.MeshBasicMaterial({ color: "#ff3b2a", toneMapped: false })),
-  );
+  const led = new THREE.Mesh(new THREE.SphereGeometry(5, 10, 8), keep(lightSource("#ff3b2a", 2.4)));
   led.position.set(350, -214, 36);
   tv.add(led);
   // the sideboard is low; the screen's centre sits just above eye level
@@ -627,10 +696,7 @@ export function buildStage(
   boardGroup.position.set(board.fx, up(board.fy), board.fz);
   boardGroup.rotation.y = (board.rot * Math.PI) / 180;
   const boardFace = keep(new THREE.MeshStandardMaterial({ map: keep(boardTexture()), roughness: 0.85 }));
-  const panel = new THREE.Mesh(new THREE.BoxGeometry(board.width, board.height, 14), [
-    timberMat, timberMat, timberMat, timberMat, boardFace, timberMat,
-  ]);
-  panel.castShadow = true;
+  const { box: panel } = frontedBox(board.width, board.height, 14, timberMat, boardFace);
   panel.userData["hit"] = {
     kind: "sign",
     key: "__board",
@@ -666,12 +732,9 @@ export function buildStage(
       emissiveIntensity: 0.04,
     }),
   );
-  const capsule = new THREE.Mesh(new THREE.BoxGeometry(world.capsule.width, world.capsule.height, 140), [
-    capsuleSide, capsuleSide, capsuleSide, capsuleSide, capsuleFace, capsuleSide,
-  ]);
+  const { box: capsule } = frontedBox(world.capsule.width, world.capsule.height, 140, capsuleSide, capsuleFace);
   capsule.position.set(world.capsule.fx, up(world.capsule.fy), world.capsule.fz);
   capsule.rotation.y = (world.capsule.rot * Math.PI) / 180;
-  capsule.castShadow = true;
   capsule.userData["hit"] = {
     kind: "capsule",
     key: "__capsule",
@@ -734,13 +797,15 @@ export function buildStage(
     scene.add(group);
   }
 
+  let version = 0;
+
   /* ---------- artwork, once it loads ---------- */
   /* Artwork arrives whenever the network gets round to it — sometimes after
      this room has been torn down for a different building. A late arrival
      then painted a texture onto a disposed material and leaked it. */
   let disposed = false;
   const loading: HTMLImageElement[] = [];
-  for (const { mesh, entry, hue } of pending) {
+  for (const { material, entry, hue } of pending) {
     const src = thumbnailForEntry(entry);
     if (!src) continue;
     const image = new Image();
@@ -748,7 +813,6 @@ export function buildStage(
     image.crossOrigin = "anonymous";
     image.onload = () => {
       if (disposed) return;
-      const material = (mesh.material as THREE.Material[])[4] as THREE.MeshStandardMaterial;
       material.map?.dispose();
       material.map = coverTexture({
         title: entry.work.title,
@@ -759,6 +823,7 @@ export function buildStage(
         image,
       });
       material.needsUpdate = true;
+      version++;
     };
     // a thumbnail that never arrives simply leaves the drawn cover in place
     image.src = src;
@@ -774,6 +839,7 @@ export function buildStage(
       material.map?.dispose();
       material.map = pictureTexture({ title: entry.work.title, hue, image });
       material.needsUpdate = true;
+      version++;
     };
     image.src = src;
   }
@@ -801,23 +867,95 @@ export function buildStage(
     return Math.abs(object.position.z - z) < 0.2 && Math.abs(object.scale.x - k) < 0.001;
   };
 
+  /* ---------- the picture: what happens after the scene is drawn ----------
+     Built the first time a machine shows it can afford it. Everything up to
+     the last pass is linear and unclamped, so a bulb can be many times
+     brighter than white and spill over its edges the way it does in a lens,
+     and tone mapping happens once, at the very end. */
+  let quality: Quality = 0;
+  let size = { width: 1, height: 1, ratio: 1 };
+  type Chain = {
+    composer: EffectComposer;
+    scenePass: RenderPass;
+    sourcePass: SourcePass;
+    ao: GTAOPass;
+    bloom: UnrealBloomPass;
+    output: OutputPass;
+  };
+  let chain: Chain | null = null;
+  const chainFor = (): Chain => {
+    if (chain) return chain;
+    const { width, height, ratio } = size;
+    const w = Math.max(1, Math.round(width * ratio));
+    const h = Math.max(1, Math.round(height * ratio));
+    // drawn off screen, the canvas's own antialiasing no longer applies: the target multisamples instead
+    const target = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: 4 });
+    const composer = new EffectComposer(renderer, target);
+    const scenePass = new RenderPass(scene, camera);
+    const sourcePass = new SourcePass();
+    sourcePass.enabled = false;
+    const ao = new GTAOPass(scene, camera, w, h);
+    /* In this world's units — a room two thousand across, a case a hundred
+       and fifty tall. The defaults are for a scene a few units wide and
+       would occlude nothing but the pores of the wood. */
+    ao.updateGtaoMaterial({ radius: 60, distanceExponent: 1.6, thickness: 40, scale: 1.15, samples: 12 });
+    ao.blendIntensity = 0.9;
+    // only what is brighter than anything a lamp can light blooms: the lamps themselves
+    const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.6, 1.4);
+    const output = new OutputPass();
+    for (const pass of [scenePass, sourcePass, ao, bloom, output]) composer.addPass(pass);
+    composer.setPixelRatio(ratio);
+    composer.setSize(width, height);
+    chain = { composer, scenePass, sourcePass, ao, bloom, output };
+    return chain;
+  };
+
   return {
     scene,
     camera,
     renderer,
     targets,
+    get version() {
+      return version;
+    },
+    get quality() {
+      return quality;
+    },
+    setQuality(next) {
+      quality = next;
+      if (next > 0) chainFor();
+    },
+    render(dt, source) {
+      if (!source && quality === 0) {
+        renderer.render(scene, camera);
+        return;
+      }
+      const c = chainFor();
+      c.scenePass.enabled = !source;
+      c.sourcePass.enabled = !!source;
+      c.sourcePass.source = source ?? null;
+      /* A traced frame has real occlusion in it. The screen-space guess
+         fades out under it as it comes up, rather than darkening every
+         corner twice. */
+      const cover = source?.cover ?? 0;
+      c.ao.enabled = quality >= 2 && cover < 1;
+      c.ao.blendIntensity = 0.9 * (1 - cover);
+      c.bloom.enabled = quality >= 1 || !!source;
+      c.composer.render(dt);
+    },
     setScreen(state) {
-      if (screenMat.map !== standby) screenMat.map?.dispose();
+      version++;
+      if (screenMat.emissiveMap !== standby) screenMat.emissiveMap?.dispose();
       if (!state.on) {
         screenOn = false;
-        screenMat.map = standby;
+        screenMat.emissiveMap = standby;
         glow.intensity = 0;
         glow.visible = false;
       } else {
         screenOn = true;
         // the artwork if it arrived; otherwise the channel, set in type — a
         // deleted video or a blocked cdn should not leave a switched-on set dark
-        screenMat.map = state.image
+        screenMat.emissiveMap = state.image
           ? new THREE.CanvasTexture(state.image)
           : screenTexture(
               [
@@ -826,20 +964,25 @@ export function buildStage(
               ],
               true,
             );
-        screenMat.map.colorSpace = THREE.SRGBColorSpace;
+        screenMat.emissiveMap.colorSpace = THREE.SRGBColorSpace;
         glow.intensity = 700_000;
         glow.visible = true;
       }
       screenMat.needsUpdate = true;
     },
     highlight(object) {
-      if (lifted === object) return;
+      // the ray lands on a case's front or its sides; it is the case that comes off the shelf
+      let owner = object;
+      while (owner && typeof owner.userData["rest"] !== "number") owner = owner.parent;
+      if (lifted === owner) return;
       if (lifted) moving.add(lifted);
-      lifted = object && typeof object.userData["rest"] === "number" ? object : null;
+      lifted = owner;
       if (lifted) moving.add(lifted);
+      version++;
     },
     tick(t, dt) {
       homeParts?.tick(t, dt);
+      if (moving.size) version++;
       for (const object of moving) if (settle(object, dt)) moving.delete(object);
       if (still) return;
 
@@ -870,14 +1013,19 @@ export function buildStage(
       }
     },
     resize(width, height, dpr) {
+      size = { width, height, ratio: dpr };
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setPixelRatio(dpr);
       renderer.setSize(width, height, false);
+      if (chain) {
+        chain.composer.setPixelRatio(dpr);
+        chain.composer.setSize(width, height);
+      }
     },
     dispose() {
       disposed = true;
-      if (screenMat.map !== standby) screenMat.map?.dispose();
+      if (screenMat.emissiveMap !== standby) screenMat.emissiveMap?.dispose();
       for (const image of loading) image.onload = null;
       for (const thing of disposables) thing.dispose();
       for (const material of coverMaterials) {
@@ -888,6 +1036,12 @@ export function buildStage(
         if (mesh.geometry) mesh.geometry.dispose();
       });
       disposeTextures();
+      if (chain) {
+        chain.ao.dispose();
+        chain.bloom.dispose();
+        chain.output.dispose();
+        chain.composer.dispose();
+      }
       renderer.dispose();
     },
   };

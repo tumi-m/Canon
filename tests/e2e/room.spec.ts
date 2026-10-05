@@ -298,6 +298,34 @@ test.describe("watching and leaving", () => {
   });
 });
 
+test.describe("ray tracing", () => {
+  test("stand still and the room develops; a step hands it back", async ({ page }) => {
+    /* The path tracer's shader is one of the largest a browser compiles, and a
+       software rasteriser compiles it on the main thread in tens of seconds.
+       The assertions are the same as on a graphics card; the patience is not. */
+    test.setTimeout(240_000);
+    await openRoom(page);
+    const toggle = page.getByRole("button", { name: /ray tracing/ });
+    // a software rasteriser starts with it off: the tracer is seconds a frame there
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await page.keyboard.press("p");
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+    const print = page.locator("[class*=print]").first();
+    await expect(print).toContainText("developing", { timeout: 120_000 });
+    // the first step puts the raster frame back, and the print away
+    await page.keyboard.down("w");
+    await expect(page.locator("[class*=print]")).toHaveCount(0, { timeout: 120_000 });
+    await page.keyboard.up("w");
+
+    // and switched off, standing still is only standing still
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await page.waitForTimeout(3000);
+    await expect(page.locator("[class*=print]")).toHaveCount(0);
+  });
+});
+
 test.describe("with less motion asked for", () => {
   test.use({ reducedMotion: "reduce" });
 

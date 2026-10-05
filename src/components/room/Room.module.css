@@ -387,6 +387,78 @@
   pointer-events: none;
   background: radial-gradient(ellipse at 50% 50%, transparent 46%, rgba(0, 0, 0, 0.72) 100%);
 }
+/* the darkroom's safelight, under the top of the hud: how far the print has come */
+.print {
+  position: fixed;
+  top: 66px;
+  left: 0;
+  right: 0;
+  width: max-content;
+  margin: 0 auto;
+  z-index: 206;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 9px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(240, 226, 203, 0.16);
+  color: #f0e2cb;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  pointer-events: none;
+  overflow: hidden;
+  animation: printIn 0.5s var(--ease) both;
+}
+@keyframes printIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.safelight {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 10px var(--red);
+  animation: safelight 1.6s ease-in-out infinite;
+}
+@keyframes safelight {
+  50% {
+    opacity: 0.35;
+  }
+}
+.safelightDone {
+  animation: none;
+  background: var(--phos);
+  box-shadow: 0 0 10px var(--phos);
+}
+.printBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--red);
+  transform-origin: left;
+  transition: transform 0.4s linear;
+}
+.safelightDone ~ .printBar {
+  background: var(--phos);
+}
+@media (prefers-reduced-motion: reduce) {
+  .safelight {
+    animation: none;
+  }
+}
+/* narrow, the places run across the top: the print sits under them */
+@media (max-width: 760px) {
+  .print {
+    top: 108px;
+  }
+}
 .dust {
   position: fixed;
   inset: 0;
