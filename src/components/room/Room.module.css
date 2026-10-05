@@ -549,6 +549,24 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* a word at a time, inked in: quick to start, never longer than a breath in all */
+.ink {
+  display: inline-block;
+  animation: ink 0.7s var(--ease) both;
+  animation-delay: min(calc(var(--i) * 55ms + 160ms), 1.8s);
+}
+@keyframes ink {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translateY(3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ink {
+    animation: none;
+  }
+}
 .frontWhy::before {
   content: "“";
   color: var(--red);

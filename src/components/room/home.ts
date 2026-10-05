@@ -2,8 +2,9 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { G, type Furnishing, type World } from "./world";
 import type { Palette } from "./venues";
-import { brickTexture, leafTexture, nightTexture, weaveTexture } from "./textures";
+import { brickTexture, clockFaceTexture, leafTexture, nightTexture, weaveTexture } from "./textures";
 import { lightSource } from "./trace";
+import type { HomeAnchors } from "./atmosphere";
 
 /**
  * The furniture that makes the den a home: a sofa facing the set, a leather
@@ -21,8 +22,10 @@ const up = (worldY: number) => -worldY;
 const FLOOR = up(G.floorY);
 
 export type HomeParts = {
-  /** flames and the light they throw, a candle, curtains in a draught */
+  /** the light the fire throws, a candle, curtains in a draught */
   tick(t: number, dt: number): void;
+  /** where the air's moving things come from: the fire, the mug, the moon */
+  readonly anchors: HomeAnchors;
 };
 
 type Keep = <T extends { dispose(): void }>(thing: T) => T;
@@ -89,8 +92,7 @@ export function buildHome(
   const brick = keep(new THREE.MeshStandardMaterial({ map: brickTexture(), roughness: 0.9 }));
   const slate = keep(new THREE.MeshStandardMaterial({ color: "#2c2c2e", roughness: 0.7 }));
   const soot = keep(new THREE.MeshStandardMaterial({ color: "#0b0807", roughness: 1 }));
-  // flames and the bulb are where the light comes from: shadow rays go through them
-  const flameMat = keep(lightSource("#ff9a3c", 2.6, { transparent: true, opacity: 0.9, depthWrite: false }));
+  // a flame is where the light comes from: shadow rays go through it
   const coreMat = keep(lightSource("#ffe39a", 3, { transparent: true, opacity: 0.95, depthWrite: false }));
   const lampGlow = keep(lightSource(p.light, 2.6));
   const shade = keep(
@@ -214,18 +216,8 @@ export function buildHome(
     log.rotation.set(Math.PI / 2, 0, turn);
     fire.add(log);
   }
-  // flames: soft cones that the tick makes breathe
-  const flames: { mesh: THREE.Mesh; phase: number; base: number }[] = [];
-  ([[-40, 60, 18], [-10, 86, 22], [20, 74, 20], [45, 52, 15], [0, 40, 26]] as const).forEach(([x, h, r], i) => {
-    const outer = new THREE.Mesh(new THREE.ConeGeometry(r, h, 14, 1, true), flameMat);
-    outer.position.set(x, 30 + h / 2, back + 118);
-    fire.add(outer);
-    flames.push({ mesh: outer, phase: i * 1.7, base: h });
-    const core = new THREE.Mesh(new THREE.ConeGeometry(r * 0.5, h * 0.6, 12, 1, true), coreMat);
-    core.position.set(x, 30 + (h * 0.6) / 2, back + 120);
-    fire.add(core);
-    flames.push({ mesh: core, phase: i * 1.7 + 0.6, base: h * 0.6 });
-  });
+  /* The flames themselves are not furniture: they are drawn in the air
+     (atmosphere.ts), so they go on burning over a traced still. */
   scene.add(fire);
   const fireLight = new THREE.PointLight(new THREE.Color("#ff8f45"), 520_000, 2600, 2);
   const local = new THREE.Vector3(0, 70, back + 150);
@@ -357,6 +349,56 @@ export function buildHome(
   knob.position.set(door.x + door.width / 2 - 30, FLOOR + 200, dz - 14);
   scene.add(knob);
 
+  /* ---------- a clock on the wall, telling the real time ----------
+     Between the fireplace and the corner, under the picture rail. */
+  const clock = new THREE.Group();
+  clock.position.set(-G.roomX + 6, FLOOR + 400, -560);
+  clock.rotation.y = Math.PI / 2;
+  const backing = mesh(new THREE.CylinderGeometry(50, 50, 8, 48), darkWood, 0, 0, 4);
+  backing.rotation.x = Math.PI / 2;
+  clock.add(backing);
+  const dial = new THREE.Mesh(
+    new THREE.CircleGeometry(44, 48),
+    keep(new THREE.MeshStandardMaterial({ map: clockFaceTexture(), roughness: 0.6 })),
+  );
+  dial.position.z = 8.5;
+  dial.receiveShadow = true;
+  clock.add(dial);
+  const bezel = mesh(new THREE.TorusGeometry(46, 3.2, 10, 48), brass, 0, 0, 9);
+  clock.add(bezel);
+  /** a hand, pivoting at the centre: `tail` of it behind the pivot */
+  const hand = (width: number, length: number, tail: number, z: number, material: THREE.Material) => {
+    const geometry = new THREE.BoxGeometry(width, length + tail, 1.4);
+    geometry.translate(0, (length - tail) / 2, 0);
+    const h = new THREE.Mesh(geometry, material);
+    h.position.z = z;
+    h.castShadow = true;
+    clock.add(h);
+    return h;
+  };
+  const inkMat = keep(new THREE.MeshStandardMaterial({ color: "#1b120c", roughness: 0.5 }));
+  const hourHand = hand(4.4, 23, 5, 10, inkMat);
+  const minuteHand = hand(3, 34, 6, 11, inkMat);
+  const secondHand = hand(1.2, 37, 9, 12, keep(new THREE.MeshStandardMaterial({ color: "#b2321f", roughness: 0.5 })));
+  // with less motion asked for the time is still told, without the second hand going round
+  secondHand.visible = !still;
+  clock.add(mesh(new THREE.CylinderGeometry(2.6, 2.6, 4, 12), brass, 0, 0, 12.5).rotateX(Math.PI / 2));
+  scene.add(clock);
+  const tell = () => {
+    const now = new Date();
+    const s = now.getSeconds() + now.getMilliseconds() / 1000;
+    const m = now.getMinutes() + s / 60;
+    const h = (now.getHours() % 12) + m / 60;
+    /* A quartz movement: the second hand jumps, overshoots, and settles,
+       all in the first tenth of a second. */
+    const into = s % 1;
+    const kick = into < 0.14 ? 1 + 2.4 * (into / 0.14 - 1) ** 3 + 1.4 * (into / 0.14 - 1) ** 2 : 1;
+    secondHand.rotation.z = -((Math.floor(s) - 1 + kick) / 60) * Math.PI * 2;
+    minuteHand.rotation.z = -(m / 60) * Math.PI * 2;
+    hourHand.rotation.z = -(h / 12) * Math.PI * 2;
+  };
+  tell();
+
   /* ---------- rugs ---------- */
   home.rugs.forEach((r, i) => {
     const rug = new THREE.Mesh(
@@ -374,20 +416,36 @@ export function buildHome(
     scene.add(rug);
   });
 
+  table.updateMatrixWorld(true);
+  const anchors: HomeAnchors = {
+    fire: fire.localToWorld(new THREE.Vector3(0, 34, back + 118)),
+    fireAcross: new THREE.Vector3(1, 0, 0).applyQuaternion(fire.quaternion),
+    fireOut: new THREE.Vector3(0, 0, 1).applyQuaternion(fire.quaternion),
+    fireTop: FLOOR + 186,
+    mug: table.localToWorld(new THREE.Vector3(tw / 2 - 26, 119 + 30, 30)),
+    moon: moon.position.clone(),
+    moonAt: moon.target.position.clone(),
+    moonCone: [moon.angle, moon.angle * (1 - moon.penumbra)],
+    // corner to corner round the glass: top left, top right, bottom right, bottom left
+    window: [
+      new THREE.Vector3(win.x - win.width / 2, wy + win.height / 2, wz),
+      new THREE.Vector3(win.x + win.width / 2, wy + win.height / 2, wz),
+      new THREE.Vector3(win.x + win.width / 2, wy - win.height / 2, wz),
+      new THREE.Vector3(win.x - win.width / 2, wy - win.height / 2, wz),
+    ],
+  };
+
   const fireBase = fireLight.intensity;
   const lampBase = lamp.intensity;
 
   return {
+    anchors,
     tick(t, dt) {
+      tell();
       if (still) return;
       // a fire never burns the same way twice: sums of unrelated sines
       const flicker = Math.sin(t * 9.1) * 0.5 + Math.sin(t * 13.7 + 1.3) * 0.3 + Math.sin(t * 4.3) * 0.2;
       fireLight.intensity = fireBase * (0.82 + 0.18 * flicker);
-      for (const f of flames) {
-        const s = 0.82 + 0.22 * Math.sin(t * 7 + f.phase) + 0.08 * Math.sin(t * 17 + f.phase * 2);
-        f.mesh.scale.set(1 - 0.08 * Math.sin(t * 5 + f.phase), s, 1);
-        f.mesh.rotation.z = Math.sin(t * 3 + f.phase) * 0.08;
-      }
       candleFlame.scale.set(1, 1.8 + Math.sin(t * 11) * 0.25, 1);
       lamp.intensity = lampBase;
       // the curtains move a little, as if the window does not quite shut

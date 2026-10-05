@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import * as THREE from "three";
 import type { Entry, Region } from "@/lib/schema";
@@ -114,6 +114,26 @@ const softwareGl = (renderer: THREE.WebGLRenderer) => {
   }
   return /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
 };
+
+/**
+ * The why, written out as you look at it: a word at a time, each inking in
+ * from a blur, the way a hand puts it down. All of it is on the page from the
+ * first frame — only the ink arrives late — so it reads in full to a screen
+ * reader and a slow machine never shows half a sentence.
+ */
+function Written({ text }: { text: string }) {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word, i) => (
+      <Fragment key={i}>
+        {i ? " " : null}
+        <span className={styles.ink} style={{ ["--i" as string]: i }}>
+          {word}
+        </span>
+      </Fragment>
+    ));
+}
 
 /**
  * The room is portalled to <body> rather than rendered where it is mounted.
@@ -1269,7 +1289,9 @@ function RoomScene({
                   <span>{openedEntry.work.title}</span>
                 </div>
                 {/* the why is the point of the product; it should not need a flip */}
-                <p className={styles.frontWhy}>{openedEntry.why}</p>
+                <p className={styles.frontWhy}>
+                  <Written text={openedEntry.why} />
+                </p>
                 <div className={styles.strip}>
                   {openedEntry.work.runtime} ·{" "}
                   {isDraft(openedEntry)

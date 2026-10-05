@@ -1,10 +1,9 @@
 import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { Pass } from "three/examples/jsm/postprocessing/Pass.js";
+import { FullScreenQuad, Pass } from "three/examples/jsm/postprocessing/Pass.js";
 import type { Entry } from "@/lib/schema";
 import { channelsFrom, thumbnailForEntry } from "@/lib/youtube";
 import { G, GAP, hash, type Accepts, type Unit, type World } from "./world";
@@ -25,6 +24,7 @@ import {
 } from "./textures";
 import { buildHome, type HomeParts } from "./home";
 import { lightSource, type FrameSource } from "./trace";
+import { AIR, buildAir, type Air } from "./atmosphere";
 
 /**
  * The room, on the GPU.
@@ -88,6 +88,8 @@ export type Stage = {
   readonly renderer: THREE.WebGLRenderer;
   /** everything the reticle can land on */
   readonly targets: THREE.Object3D[];
+  /** the air: dust, the beam, embers, steam — drawn over the frame, and never traced */
+  readonly air: THREE.Object3D;
   /**
    * Goes up whenever something changes that a still of the room would have
    * to be taken again for: a case sliding off its shelf, the set changing
@@ -198,42 +200,106 @@ function buildUnit(unit: Unit, timber: THREE.Material, board: THREE.Material): T
 }
 
 /**
- * The first pass of a frame that comes from somewhere other than the
- * rasteriser — the darkroom's print. It draws where the scene pass would
- * have, so bloom and tone mapping treat a traced frame like any other.
+ * The first pass of every frame: the room, rasterised, or the darkroom's
+ * print over it.
+ *
+ * The room is drawn once into a multisampled target of its own and copied
+ * out, rather than into the composer's buffers. A multisampled buffer is
+ * resolved and its samples thrown away after every draw into it, so a pass
+ * that draws twice into one — a copy then a blend — gets back nothing from
+ * the first draw on a GPU that takes the hint. The room's depth comes out of
+ * the same draw, for the air to test itself against.
  */
-class SourcePass extends Pass {
+class FramePass extends Pass {
   source: FrameSource | null = null;
-  constructor() {
+  readonly room: THREE.WebGLRenderTarget;
+  private readonly mix = new FullScreenQuad(
+    new THREE.ShaderMaterial({
+      uniforms: { raster: { value: null }, print: { value: null }, cover: { value: 0 } },
+      depthTest: false,
+      depthWrite: false,
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D raster;
+        uniform sampler2D print;
+        uniform float cover;
+        varying vec2 vUv;
+        void main() {
+          vec3 room = texture2D(raster, vUv).rgb;
+          vec3 traced = cover > 0.0 ? texture2D(print, vUv).rgb : room;
+          gl_FragColor = vec4(mix(room, traced, cover), 1.0);
+        }
+      `,
+    }),
+  );
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly camera: THREE.Camera,
+  ) {
+    super();
+    this.needsSwap = false;
+    this.room = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    this.room.depthTexture = new THREE.DepthTexture(1, 1);
+  }
+  override setSize(width: number, height: number) {
+    this.room.setSize(width, height);
+  }
+  override render(renderer: THREE.WebGLRenderer, _write: THREE.WebGLRenderTarget, read: THREE.WebGLRenderTarget) {
+    const cover = this.source?.cover ?? 0;
+    const uniforms = (this.mix.material as THREE.ShaderMaterial).uniforms;
+    /* Under a print that covers the frame the raster frame is not drawn at
+       all. Its depth stays good: nothing moves while a still develops. */
+    if (cover < 1) {
+      renderer.setRenderTarget(this.room);
+      renderer.clear();
+      renderer.render(this.scene, this.camera);
+    }
+    uniforms["raster"]!.value = this.room.texture;
+    uniforms["print"]!.value = cover > 0 ? (this.source?.print(renderer) ?? null) : null;
+    uniforms["cover"]!.value = uniforms["print"]!.value ? cover : 0;
+    renderer.setRenderTarget(read);
+    this.mix.render(renderer);
+  }
+  override dispose() {
+    this.room.depthTexture?.dispose();
+    this.room.dispose();
+    this.mix.material.dispose();
+    this.mix.dispose();
+  }
+}
+
+/** The air, over whatever frame came first, tested against the room's depth by hand. */
+class AirPass extends Pass {
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly camera: THREE.Camera,
+  ) {
     super();
     this.needsSwap = false;
   }
   override render(renderer: THREE.WebGLRenderer, _write: THREE.WebGLRenderTarget, read: THREE.WebGLRenderTarget) {
-    this.source?.draw(renderer, read);
+    const background = this.scene.background;
+    const clear = renderer.autoClear;
+    this.camera.layers.set(AIR);
+    this.scene.background = null;
+    renderer.autoClear = false;
+    renderer.setRenderTarget(read);
+    renderer.render(this.scene, this.camera);
+    renderer.autoClear = clear;
+    this.scene.background = background;
+    this.camera.layers.set(0);
   }
 }
 
 /** Ease a value toward a target at a rate that does not depend on frame rate. */
 const approach = (from: number, to: number, rate: number, dt: number) =>
   to + (from - to) * Math.exp(-rate * dt);
-
-/** A soft round dot, for dust. Drawn, like every other texture here. */
-function moteSprite(): THREE.Texture {
-  const size = 64;
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext("2d");
-  if (ctx) {
-    const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.35, "rgba(255,255,255,0.45)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, size, size);
-  }
-  return new THREE.CanvasTexture(c);
-}
 
 export function buildStage(
   canvas: HTMLCanvasElement,
@@ -485,53 +551,6 @@ export function buildStage(
     scene.add(light);
   }
 
-  /* ---------- dust in the light ----------
-     A few hundred motes drifting through the lamplight. It is the cheapest
-     thing in the room — one draw call, a few hundred numbers a frame — and
-     it is most of what makes still air read as air. */
-  const MOTES = 320;
-  const home = new Float32Array(MOTES * 3);
-  const drift = new Float32Array(MOTES * 3);
-  const seeded = (() => {
-    let n = 0x9e3779b9;
-    return () => {
-      n = (n * 1664525 + 1013904223) >>> 0;
-      return n / 0xffffffff;
-    };
-  })();
-  for (let i = 0; i < MOTES; i++) {
-    // gathered under the lamps, where lit dust is visible, with a few strays
-    const lamp = world.lamps[i % Math.max(1, world.lamps.length)];
-    const near = seeded() < 0.8 && lamp;
-    home[i * 3] = near ? lamp.x + (seeded() - 0.5) * 900 : (seeded() - 0.5) * G.roomX * 1.8;
-    home[i * 3 + 1] = up(G.floorY) + 40 + seeded() * (G.floorY - G.ceilY - 140);
-    home[i * 3 + 2] = near ? lamp.z + (seeded() - 0.5) * 900 : G.backZ + seeded() * (G.frontZ - G.backZ);
-    drift[i * 3] = seeded() * Math.PI * 2;
-    drift[i * 3 + 1] = 0.12 + seeded() * 0.3;
-    drift[i * 3 + 2] = 18 + seeded() * 40;
-  }
-  const moteGeometry = new THREE.BufferGeometry();
-  const motePositions = new THREE.BufferAttribute(home.slice(), 3);
-  motePositions.setUsage(THREE.DynamicDrawUsage);
-  moteGeometry.setAttribute("position", motePositions);
-  const dust = new THREE.Points(
-    moteGeometry,
-    keep(
-      new THREE.PointsMaterial({
-        color: new THREE.Color(p.light),
-        map: keep(moteSprite()),
-        size: 5,
-        sizeAttenuation: true,
-        transparent: true,
-        opacity: 0.55,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-    ),
-  );
-  dust.frustumCulled = false;
-  scene.add(dust);
-
   /* ---------- the home around the shelves, where there is one ---------- */
   const homeParts: HomeParts | null = world.home ? buildHome(scene, world, p, timberMat, keep, still) : null;
 
@@ -689,6 +708,25 @@ export function buildStage(
   glow.visible = false;
   glow.position.set(set.x - 160, TV_Y, set.z);
   scene.add(glow);
+
+  /* ---------- the air ---------- */
+  tv.updateMatrixWorld(true);
+  const air: Air = buildAir({
+    world,
+    light: new THREE.Color(p.light),
+    camera,
+    anchors: homeParts?.anchors ?? null,
+    screen: {
+      // a hair in front of the glass
+      position: screen.localToWorld(new THREE.Vector3(0, 0, 0.6)),
+      quaternion: screen.getWorldQuaternion(new THREE.Quaternion()),
+      width: 720,
+      height: 405,
+    },
+    still,
+  });
+  scene.add(air.group);
+  disposables.push(air);
 
   /* ---------- the noticeboard ---------- */
   const { board } = world;
@@ -876,8 +914,7 @@ export function buildStage(
   let size = { width: 1, height: 1, ratio: 1 };
   type Chain = {
     composer: EffectComposer;
-    scenePass: RenderPass;
-    sourcePass: SourcePass;
+    frame: FramePass;
     ao: GTAOPass;
     bloom: UnrealBloomPass;
     output: OutputPass;
@@ -888,12 +925,10 @@ export function buildStage(
     const { width, height, ratio } = size;
     const w = Math.max(1, Math.round(width * ratio));
     const h = Math.max(1, Math.round(height * ratio));
-    // drawn off screen, the canvas's own antialiasing no longer applies: the target multisamples instead
-    const target = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: 4 });
+    // the frame pass multisamples the room; everything after it works on plain, unclamped buffers
+    const target = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType });
     const composer = new EffectComposer(renderer, target);
-    const scenePass = new RenderPass(scene, camera);
-    const sourcePass = new SourcePass();
-    sourcePass.enabled = false;
+    const frame = new FramePass(scene, camera);
     const ao = new GTAOPass(scene, camera, w, h);
     /* In this world's units — a room two thousand across, a case a hundred
        and fifty tall. The defaults are for a scene a few units wide and
@@ -903,10 +938,11 @@ export function buildStage(
     // only what is brighter than anything a lamp can light blooms: the lamps themselves
     const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.6, 1.4);
     const output = new OutputPass();
-    for (const pass of [scenePass, sourcePass, ao, bloom, output]) composer.addPass(pass);
+    // the air goes after the occlusion, which would shade the beam, and before the bloom, which lights the embers
+    for (const pass of [frame, ao, new AirPass(scene, camera), bloom, output]) composer.addPass(pass);
     composer.setPixelRatio(ratio);
     composer.setSize(width, height);
-    chain = { composer, scenePass, sourcePass, ao, bloom, output };
+    chain = { composer, frame, ao, bloom, output };
     return chain;
   };
 
@@ -915,6 +951,7 @@ export function buildStage(
     camera,
     renderer,
     targets,
+    air: air.group,
     get version() {
       return version;
     },
@@ -927,13 +964,17 @@ export function buildStage(
     },
     render(dt, source) {
       if (!source && quality === 0) {
+        // one pass, room and air together, and the depth buffer does the air's testing
+        air.setDepth(null, size.width * size.ratio, size.height * size.ratio);
+        camera.layers.enable(AIR);
         renderer.render(scene, camera);
+        camera.layers.set(0);
         return;
       }
       const c = chainFor();
-      c.scenePass.enabled = !source;
-      c.sourcePass.enabled = !!source;
-      c.sourcePass.source = source ?? null;
+      const room = c.frame.room;
+      air.setDepth(room.depthTexture, room.width, room.height);
+      c.frame.source = source ?? null;
       /* A traced frame has real occlusion in it. The screen-space guess
          fades out under it as it comes up, rather than darkening every
          corner twice. */
@@ -951,6 +992,7 @@ export function buildStage(
         screenMat.emissiveMap = standby;
         glow.intensity = 0;
         glow.visible = false;
+        air.setScreen(false);
       } else {
         screenOn = true;
         // the artwork if it arrived; otherwise the channel, set in type — a
@@ -967,6 +1009,7 @@ export function buildStage(
         screenMat.emissiveMap.colorSpace = THREE.SRGBColorSpace;
         glow.intensity = 700_000;
         glow.visible = true;
+        air.setScreen(true);
       }
       screenMat.needsUpdate = true;
     },
@@ -982,6 +1025,7 @@ export function buildStage(
     },
     tick(t, dt) {
       homeParts?.tick(t, dt);
+      air.tick(t, dt);
       if (moving.size) version++;
       for (const object of moving) if (settle(object, dt)) moving.delete(object);
       if (still) return;
@@ -990,18 +1034,6 @@ export function buildStage(
         group.rotation.z = Math.sin(t * 0.55 + phase) * 0.035;
         group.rotation.x = Math.cos(t * 0.41 + phase * 1.3) * 0.028;
       }
-
-      const at = motePositions.array as Float32Array;
-      for (let i = 0; i < MOTES; i++) {
-        const phase = drift[i * 3]!;
-        const speed = drift[i * 3 + 1]!;
-        const reach = drift[i * 3 + 2]!;
-        const a = t * speed + phase;
-        at[i * 3] = home[i * 3]! + Math.sin(a) * reach;
-        at[i * 3 + 1] = home[i * 3 + 1]! + Math.sin(a * 0.7 + phase) * reach * 0.6;
-        at[i * 3 + 2] = home[i * 3 + 2]! + Math.cos(a * 0.9) * reach;
-      }
-      motePositions.needsUpdate = true;
 
       const breath = 0.03 + 0.05 * (0.5 + 0.5 * Math.sin(t * 1.1));
       for (const m of capsuleMats) m.emissiveIntensity = breath;
@@ -1037,6 +1069,7 @@ export function buildStage(
       });
       disposeTextures();
       if (chain) {
+        chain.frame.dispose();
         chain.ao.dispose();
         chain.bloom.dispose();
         chain.output.dispose();

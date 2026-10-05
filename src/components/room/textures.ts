@@ -528,6 +528,48 @@ export function wallpaperTexture(base: string, repeat: [number, number]): THREE.
 }
 
 /** The night through the window: deep blue, a few stars, the moon, a roofline. */
+/** A clock face: cream, a ring of minutes, the hours in numerals. No maker's name on it. */
+export function clockFaceTexture(): THREE.Texture {
+  return memo("clock", () => {
+    const ctx = surface(512, 512);
+    const c = 256;
+    ctx.fillStyle = "#efe4cc";
+    ctx.beginPath();
+    ctx.arc(c, c, 254, 0, Math.PI * 2);
+    ctx.fill();
+    // a little age at the edge, where the light never quite reaches
+    const age = ctx.createRadialGradient(c, c, 160, c, c, 256);
+    age.addColorStop(0, "rgba(120,90,50,0)");
+    age.addColorStop(1, "rgba(120,90,50,0.28)");
+    ctx.fillStyle = age;
+    ctx.fill();
+    ctx.strokeStyle = "#2a1d14";
+    ctx.lineCap = "round";
+    for (let i = 0; i < 60; i++) {
+      const a = (i / 60) * Math.PI * 2;
+      const hour = i % 5 === 0;
+      ctx.lineWidth = hour ? 9 : 3;
+      const r0 = hour ? 206 : 222;
+      ctx.beginPath();
+      ctx.moveTo(c + Math.sin(a) * r0, c - Math.cos(a) * r0);
+      ctx.lineTo(c + Math.sin(a) * 236, c - Math.cos(a) * 236);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#2a1d14";
+    ctx.font = "italic 56px Georgia, serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (let h = 1; h <= 12; h++) {
+      const a = (h / 12) * Math.PI * 2;
+      ctx.fillText(String(h), c + Math.sin(a) * 160, c - Math.cos(a) * 160 + 2);
+    }
+    const texture = new THREE.CanvasTexture(ctx.canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 8;
+    return texture;
+  });
+}
+
 export function nightTexture(): THREE.Texture {
   return memo("night", () => {
     const ctx = surface(512, 512);

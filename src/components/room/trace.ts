@@ -48,10 +48,10 @@ export function passesLight<M extends THREE.Material>(material: M): M {
   return Object.assign(material, { castShadow: false });
 }
 
-/** Where a frame comes from, when it does not come from the rasteriser. */
+/** Where a frame comes from, when it does not only come from the rasteriser. */
 export type FrameSource = {
-  /** draw this frame into `target`, linear and unclamped, before bloom and tone mapping */
-  draw(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget): void;
+  /** the traced image so far, linear and unclamped — or null if there is none yet */
+  print(renderer: THREE.WebGLRenderer): THREE.Texture | null;
   /** how much of the frame is the traced image, 0 → 1 — the rest is raster */
   readonly cover: number;
 };
@@ -85,6 +85,8 @@ type Scene = {
   readonly renderer: THREE.WebGLRenderer;
   /** goes up whenever anything a still has to be retaken for changes */
   readonly version: number;
+  /** what is drawn but never traced: the air is not a surface */
+  readonly air: THREE.Object3D;
 };
 
 const fullScreen = /* glsl */ `
@@ -144,24 +146,6 @@ const despeckleMaterial = () =>
     `,
   });
 
-/** The cleaned trace, laid over the raster frame — filtered, so a trace below screen resolution is not blocky. */
-const printMaterial = () =>
-  new THREE.ShaderMaterial({
-    uniforms: { map: { value: null }, opacity: { value: 0 } },
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    vertexShader: fullScreen,
-    fragmentShader: /* glsl */ `
-      uniform sampler2D map;
-      uniform float opacity;
-      varying vec2 vUv;
-      void main() {
-        gl_FragColor = vec4(texture2D(map, vUv).rgb, opacity);
-      }
-    `,
-  });
-
 export function createDarkroom(room: Scene, onChange: () => void): Darkroom {
   let tracer: WebGLPathTracer | null = null;
   let state: DarkroomState = "loading";
@@ -171,7 +155,6 @@ export function createDarkroom(room: Scene, onChange: () => void): Darkroom {
   let developing = false;
   let cover = 0;
   const despeckle = new FullScreenQuad(despeckleMaterial());
-  const print = new FullScreenQuad(printMaterial());
   // half float filters in webgl2 everywhere; the tracer's own 32-bit buffers do not
   const clean = new THREE.WebGLRenderTarget(1, 1, {
     type: THREE.HalfFloatType,
@@ -235,7 +218,12 @@ export function createDarkroom(room: Scene, onChange: () => void): Darkroom {
              building a tree over it. That is done once; after that only what
              moved is re-baked, and the tree is refitted rather than rebuilt. */
           if (taken !== room.version) {
-            tracer.setScene(room.scene, room.camera);
+            room.air.visible = false;
+            try {
+              tracer.setScene(room.scene, room.camera);
+            } finally {
+              room.air.visible = true;
+            }
             taken = room.version;
           } else {
             tracer.updateCamera();
@@ -259,32 +247,20 @@ export function createDarkroom(room: Scene, onChange: () => void): Darkroom {
       }
       return true;
     },
-    draw(renderer, target) {
-      renderer.setRenderTarget(target);
-      // until the print covers the frame, the raster frame is underneath it
-      if (cover < 1) {
-        renderer.clear();
-        renderer.render(room.scene, room.camera);
+    print(renderer) {
+      if (!tracer) return null;
+      const traced = tracer.target;
+      if (cleaned !== tracer.samples || clean.width !== traced.width || clean.height !== traced.height) {
+        const before = renderer.getRenderTarget();
+        clean.setSize(traced.width, traced.height);
+        uniform(despeckle, "map").value = traced.texture;
+        uniform(despeckle, "soften").value = Math.min(0.6, 3 / Math.max(1, tracer.samples));
+        renderer.setRenderTarget(clean);
+        despeckle.render(renderer);
+        renderer.setRenderTarget(before);
+        cleaned = tracer.samples;
       }
-      if (cover > 0 && tracer) {
-        const traced = tracer.target;
-        if (cleaned !== tracer.samples || clean.width !== traced.width || clean.height !== traced.height) {
-          clean.setSize(traced.width, traced.height);
-          uniform(despeckle, "map").value = traced.texture;
-          uniform(despeckle, "soften").value = Math.min(0.6, 3 / Math.max(1, tracer.samples));
-          renderer.setRenderTarget(clean);
-          despeckle.render(renderer);
-          renderer.setRenderTarget(target);
-          cleaned = tracer.samples;
-        }
-        uniform(print, "map").value = clean.texture;
-        uniform(print, "opacity").value = cover;
-        const clear = renderer.autoClear;
-        renderer.autoClear = false;
-        print.material.blending = cover < 1 ? THREE.NormalBlending : THREE.NoBlending;
-        print.render(renderer);
-        renderer.autoClear = clear;
-      }
+      return clean.texture;
     },
     stop() {
       if (!developing) return;
@@ -298,10 +274,8 @@ export function createDarkroom(room: Scene, onChange: () => void): Darkroom {
       disposed = true;
       tracer?.dispose();
       tracer = null;
-      for (const quad of [despeckle, print]) {
-        quad.dispose();
-        quad.material.dispose();
-      }
+      despeckle.dispose();
+      despeckle.material.dispose();
       clean.dispose();
     },
   };
