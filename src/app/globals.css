@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+/* ============================================================
+   CANON — design system
+   style: analog futurism (warm paper × phosphor)
+   type:  Newsreader (voice) / IBM Plex Mono (machine)
+   avoid: purple gradients, glassmorphism, SaaS hero clichés
+
+   Every colour in the product is a custom property declared here.
+   Components use the token, never a hex — that is what makes the
+   night-CRT mode and the generative-UI themes a token swap.
+   ============================================================ */
+
+:root {
+  --paper: #faf6ee;
+  --ink: #1b1712;
+  --ink-soft: #5c544a;
+  --line: #e3dccd;
+  --red: #c8402a;
+  --red-soft: #f4ded8;
+  --phos: #0da678;
+  --amber: #d99114;
+  --card: #fffdf8;
+
+  --serif: var(--font-newsreader), Georgia, serif;
+  --mono: var(--font-plex-mono), ui-monospace, monospace;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --grain-opacity: 0.05;
+}
+
+/* expose the tokens to Tailwind so `bg-paper` / `text-ink` resolve to them */
+@theme inline {
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-line: var(--line);
+  --color-red: var(--red);
+  --color-red-soft: var(--red-soft);
+  --color-phos: var(--phos);
+  --color-amber: var(--amber);
+  --color-card: var(--card);
+  --font-serif: var(--serif);
+  --font-mono: var(--mono);
+}
+
+/* ============================================================
+   VENUES
+   The room itself is drawn by three.js, whose materials are painted
+   from each venue's palette in venues.ts. What is left here is the
+   css that sits on top of it: the dark behind the curtain while a
+   building is put up, and the colour its labels are set in.
+   ============================================================ */
+:root,
+[data-venue="den"] {
+  --room-void: radial-gradient(ellipse at 50% 55%, #2a2018 0%, #150f0b 60%, #0a0706 100%);
+  --room-label: #e8cfa5;
+}
+
+[data-venue="library"] {
+  --room-void: radial-gradient(ellipse at 50% 55%, #1d2320 0%, #0e1211 60%, #060908 100%);
+  --room-label: #d8c79c;
+}
+
+[data-venue="vault"] {
+  --room-void: radial-gradient(ellipse at 50% 55%, #1b1f24 0%, #0d1013 60%, #050708 100%);
+  --room-label: #cddbe6;
+}
+
+[data-venue="seedbank"] {
+  --room-void: radial-gradient(ellipse at 50% 55%, #1e2a33 0%, #0e161c 60%, #060b0e 100%);
+  --room-label: #dcefff;
+}
+
+[data-venue="cinema"] {
+  --room-void: radial-gradient(ellipse at 50% 55%, #17100f 0%, #0a0605 60%, #040202 100%);
+  --room-label: #f0cfc4;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.6;
+  letter-spacing: 0.005em;
+  transition:
+    background 0.5s var(--ease),
+    color 0.5s var(--ease);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--red);
+  color: var(--paper);
+}
+
+/* film grain over everything — the one texture the design leans on */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 120;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--red);
+  text-underline-offset: 3px;
+}
+a:hover {
+  color: var(--red);
+}
+
+button {
+  font-family: var(--mono);
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

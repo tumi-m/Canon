@@ -1,0 +1,223 @@
+.page {
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 0 24px 80px;
+}
+
+.masthead {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.wordmark {
+  font-family: var(--serif);
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.dot {
+  color: var(--red);
+}
+.cursor {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  background: var(--red);
+  vertical-align: -0.15em;
+  margin-left: 2px;
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.hero {
+  padding: 110px 0 70px;
+}
+.kicker {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  color: var(--phos);
+  text-transform: uppercase;
+  margin-bottom: 26px;
+}
+.h1 {
+  font-weight: 400;
+  font-size: clamp(2.6rem, 6.4vw, 4.6rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  max-width: 16ch;
+}
+.h1 em {
+  font-style: italic;
+  position: relative;
+  white-space: nowrap;
+}
+.h1 em::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.06em;
+  height: 0.09em;
+  background: var(--red);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: underdraw 1s 1s var(--ease) forwards;
+}
+@keyframes underdraw {
+  to {
+    transform: scaleX(1);
+  }
+}
+.lede {
+  max-width: 52ch;
+  margin-top: 28px;
+  color: var(--ink-soft);
+  font-size: 1.06rem;
+}
+
+.canons {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 44px;
+  max-width: 520px;
+}
+.canonLink {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 14px 4px;
+  border-bottom: 1px dashed var(--line);
+  text-decoration: none;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  transition: padding 0.2s var(--ease);
+}
+.canonLink:hover {
+  padding-left: 12px;
+}
+.canonHandle {
+  color: var(--ink);
+}
+.canonCount {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+}
+
+.state {
+  margin-top: 54px;
+  max-width: 52ch;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.9;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 40px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+}
+
+/* ---------- motion ---------- */
+
+/* the page arrives in reading order */
+.kicker,
+.h1,
+.lede,
+.ticker,
+.canons,
+.state {
+  animation: heroRise 0.9s var(--ease) both;
+}
+.h1 {
+  animation-delay: 0.08s;
+}
+.lede {
+  animation-delay: 0.2s;
+}
+.ticker {
+  animation-delay: 0.32s;
+}
+.canons {
+  animation-delay: 0.42s;
+}
+.state {
+  animation-delay: 0.54s;
+}
+@keyframes heroRise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(4px);
+  }
+}
+
+/* a shelf of real titles, sliding past slowly; it stops when you look at it */
+.ticker {
+  margin-top: 46px;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  mask-image: linear-gradient(90deg, transparent, black 10%, black 90%, transparent);
+}
+.tickerTrack {
+  display: flex;
+  width: max-content;
+  animation: tick 70s linear infinite;
+}
+.ticker:hover .tickerTrack {
+  animation-play-state: paused;
+}
+.tickerItem {
+  padding: 12px 22px;
+  font-family: var(--serif);
+  font-size: 1.02rem;
+  font-style: italic;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  border-right: 1px dashed var(--line);
+}
+.tickerItem:nth-child(3n) {
+  color: var(--red);
+}
+@keyframes tick {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.canonLink {
+  position: relative;
+}
+.canonLink::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 1px;
+  width: 100%;
+  background: var(--red);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.45s var(--ease);
+}
+.canonLink:hover::before,
+.canonLink:focus-visible::before {
+  transform: scaleX(1);
+}

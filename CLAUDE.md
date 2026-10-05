@@ -3,10 +3,13 @@
 A personal curated content network. Each person has a public "canon": content that
 shaped them, with a one-line why and where to stream it in the visitor's region.
 
-> **State:** the app does not exist yet. The repo currently holds the spec
-> (`docs/PLAN.md`), the business case (`docs/BUSINESS.md`) and a working
-> single-file prototype (`prototype/canon.html`). The commands below start
-> working at milestone M0, which scaffolds the Next.js app.
+> **State:** M0 is done and the app runs. `/` and `/[handle]` are live, along
+> with the walkable room. There is still no database, no auth and no writes —
+> a canon is a static object in `src/lib/canon.ts`, and the audience/capsule
+> shapes in `src/lib/schema.ts` are **intent, not enforcement**. See
+> `docs/PROGRESS.md` before starting anything.
+>
+> The supabase commands below start working at M1.
 
 ## Commands
 - `npm run dev` · `npm run build` · `npm run typecheck` · `npm run lint`
@@ -16,7 +19,7 @@ shaped them, with a one-line why and where to stream it in the visitor's region.
 
 ## Architecture
 - Next.js 15 App Router. Server Components by default; `"use client"` only for
-  interactivity (the store, drawers, forms).
+  interactivity (the room, drawers, forms).
 - Supabase Postgres. **Row Level Security is the security boundary.** Application
   code must never be the only thing preventing access to a row.
 - `src/lib/supabase/server.ts` — server client (cookie-based session)
@@ -50,4 +53,4 @@ shaped them, with a one-line why and where to stream it in the visitor's region.
 - Any change touching access control requires an RLS test proving an unauthorised
   role gets zero rows. Write the failing test first.
 - E2E covers the four critical paths: create a canon, view someone else's canon,
-  membership unlock, walk the store.
+  a capsule staying sealed, walk the room.
