@@ -6,9 +6,13 @@
 # deps / build
 node_modules/
 .next/
+.next-accounts/
 out/
 dist/
 build/
+
+# vercel
+.vercel
 
 # test output
 coverage/
@@ -27,3 +31,6 @@ Thumbs.db
 # logs
 *.log
 npm-debug.log*
+
+# tsc
+*.tsbuildinfo

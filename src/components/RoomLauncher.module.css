@@ -1,0 +1,112 @@
+.button {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  padding: 13px 22px;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  background: var(--ink);
+  color: var(--paper);
+  transition: all 0.25s var(--ease);
+  text-transform: lowercase;
+  position: relative;
+  overflow: hidden;
+}
+/* light from under a door: a warm sweep across the button when you reach for it */
+.button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--paper) 38%, transparent) 50%,
+    transparent 70%
+  );
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+.button:hover::after,
+.button:focus-visible::after {
+  transition: transform 0.8s var(--ease);
+  transform: translateX(120%);
+}
+.button:hover {
+  background: var(--red);
+  border-color: var(--red);
+  transform: translateY(-1px);
+}
+.note {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  margin-top: 12px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+}
+.pick select {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 10px 12px;
+}
+.pick select:hover {
+  border-color: var(--red);
+}
+.blurb {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  margin-top: 12px;
+  max-width: 46ch;
+}
+
+.blurb {
+  animation: blurbIn 0.5s var(--ease) both;
+}
+@keyframes blurbIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* the few hundred milliseconds between the press and the room's code arriving */
+.pending {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  color: var(--room-label);
+  background: var(--room-void);
+  animation: pendingIn 0.3s ease-out both;
+}
+@keyframes pendingIn {
+  from {
+    opacity: 0;
+  }
+}

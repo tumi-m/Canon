@@ -1,0 +1,1350 @@
+"use client";
+
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import * as THREE from "three";
+import type { Entry, Region } from "@/lib/schema";
+import { WEIGHT_LABEL } from "@/lib/schema";
+import { offersFor, regionName } from "@/lib/availability";
+import { channelLabel, channelsFrom, surf, thumbnailFor, thumbnailForEntry } from "@/lib/youtube";
+import { createRoomSound, STRIDE, type RoomSound } from "@/lib/roomSound";
+import { artFor, buildWorld, collide, G, nearestUnit, viewpointFor, type Face, type Pose } from "./world";
+import { buildStage, hitOf, type Hit, type Quality, type Screen, type Stage } from "./scene";
+import { createDarkroom, FULL_EXPOSURE, type Darkroom, type DarkroomState } from "./trace";
+import { VENUES, venueById, type VenueId } from "./venues";
+import { AddLinkForm } from "../AddLink";
+import Monitor from "./Monitor";
+import { isDraft, type newLinkSchema } from "@/lib/drafts";
+import type { Accepts } from "./world";
+import styles from "./Room.module.css";
+
+type Props = {
+  entries: readonly Entry[];
+  region: Region;
+  services: readonly string[];
+  displayName: string;
+  venue: VenueId;
+  onVenue: (venue: VenueId) => void;
+  onLeave: () => void;
+  onBrowseList: () => void;
+  /** keep something added from a sign in the room; false if it could not be kept */
+  onAdd: (link: ReturnType<typeof newLinkSchema.parse>) => boolean;
+};
+
+/** Everything the frame loop mutates, kept out of React state. */
+type Live = {
+  x: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+  vx: number;
+  vz: number;
+  bob: number;
+  keys: Set<string>;
+  /** which arrows are held: -1, 0 or 1 on each axis */
+  look: { x: number; y: number };
+  stick: { x: number; y: number };
+  aim: Hit | null;
+  raf: number;
+  last: number;
+  frame: number;
+  stride: number;
+  /** 1 → 0 over the walk in through the door */
+  intro: number;
+  /** walking over to a shelf somebody picked from the list, if they did */
+  glide: Glide | null;
+  /**
+   * Where the mouse is over the room, in normalised device coordinates — or
+   * null when the keyboard is doing the aiming, from the middle of the view.
+   * Whichever was used last decides.
+   */
+  pointer: { x: number; y: number } | null;
+};
+
+type Glide = { from: Pose; to: Pose; t: number; seconds: number };
+
+/** ease in and out: a walk starts and stops, it does not teleport or skid */
+const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+
+/** the short way round from one heading to another, in degrees */
+const turnTo = (from: number, to: number) => ((((to - from) % 360) + 540) % 360) - 180;
+
+/** wasd walks. */
+const KEYMAP: Record<string, string> = { w: "w", a: "a", s: "s", d: "d" };
+
+/**
+ * The arrows turn your head.
+ *
+ * They used to be a second set of walk keys, which left looking around
+ * available only to a mouse — no pointer, no way to face anything, and a
+ * reticle you cannot aim is a room you cannot use. Walking and looking are
+ * different verbs and now have different keys.
+ */
+const LOOKMAP: Record<string, [number, number]> = {
+  arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, 1], arrowdown: [0, -1],
+};
+
+/** degrees a second, held down */
+const TURN = 108;
+
+/** how close a shelf has to be before the badge says you are at it */
+const NEAR_SHELF = 620;
+
+/** seconds of standing still before the room starts to develop */
+const STILL = 0.8;
+
+/** Has the view changed — by more than the drift of a settling footstep? */
+const sameMatrix = (a: THREE.Matrix4, b: THREE.Matrix4) => {
+  for (let i = 0; i < 16; i++) if (Math.abs(a.elements[i]! - b.elements[i]!) > 1e-3) return false;
+  return true;
+};
+
+/**
+ * Is this a software rasteriser — no graphics card, or one the browser will
+ * not use? Those draw the plain room: the passes after it, and the path
+ * tracer most of all, are seconds a frame there.
+ */
+const softwareGl = (renderer: THREE.WebGLRenderer) => {
+  const context = renderer.getContext();
+  let name = String(context.getParameter(context.RENDERER));
+  // chrome only names the hardware through the debug extension
+  if (/webkit|mozilla/i.test(name)) {
+    const info = context.getExtension("WEBGL_debug_renderer_info");
+    if (info) name = String(context.getParameter(info.UNMASKED_RENDERER_WEBGL));
+  }
+  return /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
+};
+
+/**
+ * The why, written out as you look at it: a word at a time, each inking in
+ * from a blur, the way a hand puts it down. All of it is on the page from the
+ * first frame — only the ink arrives late — so it reads in full to a screen
+ * reader and a slow machine never shows half a sentence.
+ */
+function Written({ text }: { text: string }) {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word, i) => (
+      <Fragment key={i}>
+        {i ? " " : null}
+        <span className={styles.ink} style={{ ["--i" as string]: i }}>
+          {word}
+        </span>
+      </Fragment>
+    ));
+}
+
+/**
+ * The room is portalled to <body> rather than rendered where it is mounted.
+ * It has to be: making the rest of the page inert means walking body's
+ * children, and a room nested inside <main> is *inside* the thing it needs to
+ * switch off — so focus walks straight out of the den into the canon behind it.
+ */
+export default function Room(props: Props) {
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  /* captured out here, because it has to be read before the scene mounts and
+     moves focus to its own exit button */
+  const opener = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    opener.current = document.activeElement as HTMLElement | null;
+    const el = document.createElement("div");
+    el.dataset.canonRoom = "";
+    document.body.appendChild(el);
+    setHost(el);
+    return () => el.remove();
+  }, []);
+
+  if (!host) return null;
+  return createPortal(<RoomScene {...props} host={host} opener={opener} />, host);
+}
+
+function RoomScene({
+  entries, region, services, displayName, venue, onVenue,
+  onLeave, onBrowseList, onAdd, host, opener,
+}: Props & { host: HTMLElement; opener: React.RefObject<HTMLElement | null> }) {
+  const place = useMemo(() => venueById(venue), [venue]);
+  const world = useMemo(() => buildWorld(entries, place.shelves, place.furnished), [entries, place]);
+  const paid = useMemo(() => new Set(services), [services]);
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const exitRef = useRef<HTMLButtonElement>(null);
+  const nubRef = useRef<HTMLElement>(null);
+  const stageRef = useRef<Stage | null>(null);
+  /** what is under a point on the screen, while there is a room to ask */
+  const pickRef = useRef<((x: number, y: number) => Hit | null) | null>(null);
+  /** when mouse look last let go of the pointer: the Esc that did it is not a request to leave */
+  const releasedAt = useRef(0);
+  /** what the set in the room is showing, kept so a rebuilt room shows it too */
+  const screenState = useRef<Screen>({ on: false });
+
+  const [at, setAt] = useState<string | null>(null);
+  const [aimLabel, setAimLabel] = useState<{ title: string; hint: string } | null>(null);
+  const [opened, setOpened] = useState<number | null>(null);
+  const [flipped, setFlipped] = useState(false);
+  const [coarse, setCoarse] = useState(false);
+  /** mouse look: the pointer captured, first-person style — only if asked for */
+  const [captured, setCaptured] = useState(false);
+  const [theatre, setTheatre] = useState(false);
+  /** the capsule's card: what it is, and why it stays shut */
+  const [capsule, setCapsule] = useState(false);
+  /** adding something from a sign: the shelf it starts on */
+  const [adding, setAdding] = useState<Accepts | null>(null);
+  /** the room is drawn on the gpu; say which of the three states it is in */
+  const [gl, setGl] = useState<"loading" | "ready" | "failed">("loading");
+  /** stand still and the room is path traced — on by default where the machine can carry it */
+  const [stills, setStills] = useState(false);
+  const stillsRef = useRef(false);
+  /** once somebody has switched it themselves, a new building does not switch it back */
+  const stillsChosen = useRef(false);
+  const toggleStills = useCallback(() => {
+    stillsChosen.current = true;
+    setStills((on) => !on);
+  }, []);
+  /** how far the print has come, while there is one */
+  const [print, setPrint] = useState<{ state: DarkroomState; samples: number } | null>(null);
+  /** the curtain stays down while the room builds, then lifts rather than vanishing */
+  const [curtainUp, setCurtainUp] = useState(false);
+  useEffect(() => {
+    if (gl === "loading") setCurtainUp(false);
+  }, [gl]);
+
+  const reduced = useRef(false);
+  const paused = useRef(false);
+  const touch = useRef(false);
+  const live = useRef<Live>({
+    x: 0, z: G.spawnZ, yaw: 0, pitch: 0, vx: 0, vz: 0, bob: 0,
+    keys: new Set(), look: { x: 0, y: 0 }, stick: { x: 0, y: 0 },
+    aim: null, raf: 0, last: 0, frame: 0, stride: 0, intro: 1, glide: null, pointer: null,
+  });
+
+  /* ---------- the television ---------- */
+  const channels = useMemo(() => channelsFrom(entries), [entries]);
+  const [tvOn, setTvOn] = useState(false);
+  const [channel, setChannel] = useState(0);
+  const [muted, setMuted] = useState(true);
+  const playing = tvOn ? channels[channel] : undefined;
+
+  /* ---------- room sound ---------- */
+  const [audible, setAudible] = useState(false);
+  const sound = useRef<RoomSound | null>(null);
+
+  const toggleSound = useCallback(() => {
+    setAudible((on) => {
+      if (on) {
+        sound.current?.close();
+        sound.current = null;
+        return false;
+      }
+      // must be built inside the gesture: browsers refuse otherwise
+      sound.current = createRoomSound();
+      return sound.current !== null;
+    });
+  }, []);
+
+  useEffect(() => {
+    sound.current?.duck(tvOn);
+  }, [tvOn]);
+  useEffect(() => () => sound.current?.close(), []);
+
+  const tune = useCallback(
+    (step: number) => {
+      if (channels.length === 0) return;
+      setTvOn(true);
+      setChannel((c) => surf(channels, c, step));
+      sound.current?.clack();
+    },
+    [channels],
+  );
+
+  const providerFor = useCallback(
+    (entry: Entry) =>
+      // a draft says so on its own cover, so it is never mistaken for the canon
+      isDraft(entry) ? "draft · this device" : (offersFor(entry.work.id, region)[0]?.provider.name ?? "—"),
+    [region],
+  );
+
+  const activate = useCallback(
+    (hit: Hit | null) => {
+      if (!hit) return;
+      /* it used to close the room and say so on the page behind — thrown out
+         of somebody's den for looking at the one thing in it that waits */
+      if (hit.kind === "capsule") {
+        setCapsule(true);
+        sound.current?.pick();
+        return;
+      }
+      if (hit.kind === "sign") {
+        setAdding(hit.accepts ?? { weight: 3, highlighted: false });
+        sound.current?.pick();
+        return;
+      }
+      if (hit.kind === "tv") {
+        if (channels.length === 0) return;
+        setTvOn(true);
+        setTheatre(true);
+        sound.current?.clack();
+        return;
+      }
+      if (hit.entry !== null) {
+        setOpened(hit.entry);
+        setFlipped(false);
+        sound.current?.pick();
+      }
+    },
+    [channels.length],
+  );
+
+  /**
+   * Everywhere the list can take you: the shelves, then the set (if anything
+   * plays on it) and the capsule. The set and the capsule used to be
+   * reachable only by steering at them, which at a low frame rate could mean
+   * turning straight past.
+   */
+  const places = useMemo(
+    () => [
+      ...world.units.map((u) => ({ key: u.key, label: u.label, face: u as Face })),
+      ...(world.hearth ? [{ key: "fireplace", label: world.hearth.label, face: world.hearth as Face }] : []),
+      ...(channels.length ? [{ key: "set", label: world.screen.label, face: world.screen as Face }] : []),
+      { key: "capsule", label: world.capsule.label, face: world.capsule as Face },
+      { key: "board", label: world.board.label, face: world.board as Face },
+    ],
+    [world, channels.length],
+  );
+
+  /** Walk over to a place and face it — from the list, or its number key. */
+  const goTo = useCallback(
+    (unit: Face) => {
+      const L = live.current;
+      const to = viewpointFor(unit, world, window.innerWidth / Math.max(1, window.innerHeight));
+      const from: Pose = { x: L.x, z: L.z, yaw: L.yaw, pitch: L.pitch };
+      if (reduced.current) {
+        Object.assign(L, { x: to.x, z: to.z, yaw: to.yaw, pitch: to.pitch, glide: null });
+        return;
+      }
+      const distance = Math.hypot(to.x - from.x, to.z - from.z);
+      const turn = Math.abs(turnTo(from.yaw, to.yaw));
+      // a walk takes as long as the walk, a turn on the spot not much less
+      const seconds = Math.min(2.2, Math.max(0.7, distance / 900 + turn / 260));
+      L.keys.clear();
+      L.look = { x: 0, y: 0 };
+      L.glide = { from, to, t: 0, seconds };
+    },
+    [world],
+  );
+
+  /* ---------- build the scene ---------- */
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    reduced.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    touch.current = window.matchMedia("(pointer:coarse)").matches;
+    setCoarse(touch.current);
+
+    const L = live.current;
+
+    const mount = (): (() => void) => {
+      let stage: Stage;
+      try {
+        stage = buildStage(canvas, world, place, entries, providerFor, reduced.current);
+      } catch {
+        // no webgl, or the context was refused. the list is always there.
+        setGl("failed");
+        return () => {};
+      }
+      stageRef.current = stage;
+      stage.setScreen(screenState.current);
+      // whatever the reticle was holding belonged to the room that just went
+      L.aim = null;
+      setAimLabel(null);
+
+      /* A rebuild — a different building, a different region — happens around
+         you. It used to walk you back to the door every time. */
+      [L.x, L.z] = collide(L.x, L.z, world.boxes, world.bounds);
+
+      // a driver reset or a backgrounded phone can take the gpu away mid-visit
+      const lost = (e: Event) => {
+        e.preventDefault();
+        cancelAnimationFrame(L.raf);
+        setGl("failed");
+      };
+      canvas.addEventListener("webglcontextlost", lost);
+
+      // cap the pixel ratio: a 3x phone display is three times the pixels for
+      // no visible gain in a room this dim
+      const sharpest = Math.min(window.devicePixelRatio || 1, 2);
+      /* The picture starts as good as the machine is likely to manage: every
+         pass on a desktop with a graphics card, bloom without occlusion on a
+         phone, the plain room on a software rasteriser. */
+      const software = softwareGl(stage.renderer);
+      let quality: Quality = software ? 0 : touch.current ? 1 : 2;
+      stage.setQuality(quality);
+      if (!stillsChosen.current) {
+        const traceable = !software && !touch.current;
+        stillsRef.current = traceable;
+        setStills(traceable);
+      }
+      /* Then it follows the frame rate. A machine that cannot hold ~30fps
+         gives up ambient occlusion first, then resolution, then bloom, and
+         earns resolution back once it is comfortably quick again. A pass it
+         has shown it cannot afford stays off for the visit, so the room does
+         not flicker between two looks. A slightly plainer room is a far
+         better trade than one that stutters every time you turn. */
+      let dpr = sharpest;
+      let pace = 1 / 60;
+      let settle = 1.5;
+      const fit = () => {
+        stage.resize(window.innerWidth, window.innerHeight, dpr);
+      };
+      /** `elapsed` is the real time since the last frame, however long that was */
+      const adapt = (elapsed: number) => {
+        // a single hitch — a shader compiling, a cover decoding — is not a slow machine
+        pace += (Math.min(elapsed, 0.1) - pace) * 0.08;
+        /* Settling is counted in real seconds, not in the clamped step the
+           walk uses: at three seconds a frame the room used to take a minute
+           of wall-clock time to notice it was slow. */
+        settle -= elapsed;
+        if (settle > 0) return;
+        if (pace > 1 / 28) {
+          if (quality === 2) quality = 1;
+          else if (dpr > 0.6) {
+            dpr = Math.max(0.6, dpr * 0.75);
+            fit();
+          } else if (quality === 1) quality = 0;
+          else return;
+          stage.setQuality(quality);
+          settle = 1;
+        } else if (pace < 1 / 55 && dpr < sharpest) {
+          dpr = Math.min(sharpest, dpr * 1.2);
+          fit();
+          settle = 3;
+        }
+      };
+      fit();
+
+      /* ---------- the darkroom ----------
+         Fetched the first time you stand still with stills on, not before. */
+      let darkroom: Darkroom | null = null;
+      let shown = "";
+      const report = () => {
+        const d = darkroom;
+        const showing = d && (d.state === "developing" || d.state === "developed");
+        // every pass while they are slow to come, then every few: a re-render a pass is not worth it
+        const passes = Math.floor(d?.samples ?? 0);
+        const key = showing ? `${d.state}:${passes < 16 ? passes : passes >> 2}` : "";
+        if (key === shown) return;
+        shown = key;
+        // the tracer counts a pass a tile at a time; a print is in whole passes
+        setPrint(showing ? { state: d.state, samples: Math.floor(d.samples) } : null);
+      };
+      const view = new THREE.Matrix4();
+      // a resized window changes the lens without moving the eye
+      const lens = new THREE.Matrix4();
+      let seen = -1;
+      let stillFor = 0;
+      window.addEventListener("resize", fit);
+
+      const raycaster = new THREE.Raycaster();
+      /**
+       * The reticle is a ring on the screen, not a mathematical point, so the
+       * pick samples the area it actually covers: the centre plus its rim. One
+       * ray can thread a seam between two touching cases and report nothing
+       * while the crosshair is plainly sitting on artwork.
+       */
+      const RETICLE = 0.022; // in NDC, about the radius the ring is drawn at
+      const probes = [
+        new THREE.Vector2(0, 0),
+        new THREE.Vector2(RETICLE, 0),
+        new THREE.Vector2(-RETICLE, 0),
+        new THREE.Vector2(0, RETICLE),
+        new THREE.Vector2(0, -RETICLE),
+      ];
+      /** whatever the reticle covers, nearest first */
+      const aimed = new THREE.Vector2();
+      let aimedWith = "";
+      const pointerAt = new THREE.Vector2();
+      /* what is under a point on the screen, asked once — for a click, which
+         should take what the hand is on now, not what the last frame saw */
+      pickRef.current = (x, y) => {
+        stage.camera.updateMatrixWorld();
+        raycaster.setFromCamera(pointerAt.set(x, y), stage.camera);
+        const first = raycaster.intersectObjects(stage.targets, true)[0];
+        return first && first.distance < 1500 ? hitOf(first.object) : null;
+      };
+      const aimAt = (camera: THREE.Camera, targets: THREE.Object3D[], around = probes[0]!) => {
+        let best: THREE.Intersection | null = null;
+        for (const probe of probes) {
+          raycaster.setFromCamera(aimed.set(around.x + probe.x, around.y + probe.y), camera);
+          const first = raycaster.intersectObjects(targets, true)[0];
+          if (first && (!best || first.distance < best.distance)) best = first;
+        }
+        return best;
+      };
+
+      const step = (dt: number) => {
+        let moving: number;
+        if (L.glide) {
+          /* Walking over to a shelf picked from the list. It goes through
+             collision like any other step, so it slides round the crate
+             rather than through it, and it lands exactly where it meant to:
+             the spot is one you could have walked to. */
+          const g = L.glide;
+          g.t = Math.min(1, g.t + dt / g.seconds);
+          const e = easeInOut(g.t);
+          const [nx, nz] = collide(
+            g.from.x + (g.to.x - g.from.x) * e,
+            g.from.z + (g.to.z - g.from.z) * e,
+            world.boxes,
+            world.bounds,
+          );
+          moving = dt > 0 ? Math.hypot(nx - L.x, nz - L.z) / dt : 0;
+          L.x = nx;
+          L.z = nz;
+          L.yaw = g.from.yaw + turnTo(g.from.yaw, g.to.yaw) * e;
+          L.pitch = g.from.pitch + (g.to.pitch - g.from.pitch) * e;
+          L.vx = 0;
+          L.vz = 0;
+          if (g.t >= 1) L.glide = null;
+        } else {
+          // arrows first: where you are facing decides which way forward is
+          if (L.look.x || L.look.y) {
+            L.yaw += L.look.x * TURN * dt;
+            L.pitch = Math.max(-42, Math.min(42, L.pitch + L.look.y * TURN * dt));
+          }
+          const f = (L.keys.has("w") ? 1 : 0) - (L.keys.has("s") ? 1 : 0) + L.stick.y;
+          const r = (L.keys.has("d") ? 1 : 0) - (L.keys.has("a") ? 1 : 0) + L.stick.x;
+          const yaw = (L.yaw * Math.PI) / 180;
+          const ix = Math.sin(yaw) * f + Math.cos(yaw) * r;
+          const iz = -Math.cos(yaw) * f + Math.sin(yaw) * r;
+          const mag = Math.hypot(ix, iz);
+          const speed = G.speed;
+          const tx = mag ? (ix / mag) * speed : 0;
+          const tz = mag ? (iz / mag) * speed : 0;
+          const k = Math.min(1, dt * (reduced.current ? 40 : 9));
+          L.vx += (tx - L.vx) * k;
+          L.vz += (tz - L.vz) * k;
+          // come to a stop, rather than creep towards one forever: standing still is a state
+          if (!mag && Math.hypot(L.vx, L.vz) < 2) {
+            L.vx = 0;
+            L.vz = 0;
+          }
+          const [nx, nz] = collide(L.x + L.vx * dt, L.z + L.vz * dt, world.boxes, world.bounds);
+          L.x = nx;
+          L.z = nz;
+          moving = Math.hypot(L.vx, L.vz);
+        }
+
+        L.bob += moving * dt * 0.024;
+        L.stride += moving * dt;
+        if (L.stride > STRIDE) {
+          L.stride = 0;
+          sound.current?.step();
+        }
+
+        /* The way in: you arrive a few steps back, a little taller than you
+           will stand once you are in, and settle onto your feet as the
+           curtain lifts. Cubic ease-out, so it slows as it lands. */
+        if (reduced.current) L.intro = 0;
+        else if (L.intro > 0) L.intro = Math.max(0, L.intro - dt / 1.9);
+        const arriving = L.intro * L.intro * L.intro;
+
+        // world.ts measures +y down; the scene is built +y up (see scene.ts)
+        const bob = reduced.current ? 0 : -Math.sin(L.bob) * 6;
+        stage.camera.position.set(L.x, bob + arriving * 36, L.z + arriving * 210);
+        stage.camera.rotation.set(0, 0, 0);
+        stage.camera.rotateY((L.yaw * Math.PI) / -180);
+        stage.camera.rotateX(((L.pitch - arriving * 5) * Math.PI) / 180);
+        if (!reduced.current) stage.camera.rotateZ((Math.sin(L.bob * 0.5) * 0.45 * Math.PI) / 180);
+      };
+
+      const loop = (t: number) => {
+        // behind the big screen the room is paused, not torn down
+        if (paused.current) {
+          L.last = t;
+          L.raf = requestAnimationFrame(loop);
+          return;
+        }
+        /* Clamp only the pathological gap — a backgrounded tab coming back —
+           and let an honestly slow frame integrate at its real length. Capping
+           at a tenth of a second meant anything under 10fps walked in slow
+           motion, which is exactly the machine that can least afford it. */
+        const elapsed = (t - L.last) / 1000 || 0.016;
+        const dt = Math.min(0.25, elapsed);
+        L.last = t;
+        step(dt);
+
+        // the reticle is a real ray now: no cones, no thresholds, no hysteresis
+        if (++L.frame % 3 === 0) {
+          // the camera is not in the scene graph, so nothing else refreshes it;
+          // without this the ray is aimed a frame behind where you are looking
+          stage.camera.updateMatrixWorld();
+          // under the mouse if the mouse was used last, else the middle of the view
+          const first = L.pointer
+            ? aimAt(stage.camera, stage.targets, pointerAt.set(L.pointer.x, L.pointer.y))
+            : aimAt(stage.camera, stage.targets);
+          const hit = first && first.distance < 1500 ? hitOf(first.object) : null;
+          // the target, and how you are pointing at it: the label names both
+          const how = touch.current ? "tap" : L.pointer ? "click" : "key";
+          if (hit?.key !== L.aim?.key || how !== aimedWith) {
+            aimedWith = how;
+            L.aim = hit ?? null;
+            stage.highlight(hit && hit.kind === "sleeve" ? (first?.object ?? null) : null);
+            // the cursor says it can be clicked; the label says what clicking does
+            if (!document.pointerLockElement) {
+              rootRef.current?.classList.toggle(styles.over!, !!hit && !!L.pointer);
+            }
+            const key = touch.current ? "TAP" : L.pointer ? "CLICK" : "E";
+            const does =
+              hit?.kind === "capsule"
+                ? "SEALED UNTIL ITS DATE"
+                : hit?.kind === "sign"
+                  ? "ADD SOMETHING HERE"
+                  : hit?.kind === "tv"
+                    ? "SIT DOWN AND WATCH"
+                    : "TAKE IT OFF THE SHELF";
+            if (!hit) setAimLabel(null);
+            else setAimLabel({ title: hit.label, hint: `${key} · ${does}` });
+          }
+          /* what you are looking at beats what happens to be nearest: a small
+             crate in the middle of the floor is closer to most of the room than
+             the bookcase you are standing at reading. */
+          const near = nearestUnit(world.units, L);
+          const close = near && Math.hypot(near.fx - L.x, near.fz - L.z) < NEAR_SHELF;
+          // across the room from everything, you are simply in the room
+          setAt(L.aim?.shelf ?? (close ? near.label : null));
+        }
+
+        stage.tick(t / 1000, dt);
+
+        /* Standing still — nothing you are doing moves the view, nothing in
+           the room is sliding about — for long enough, the darkroom takes
+           over the frame. The first step hands it back. */
+        stage.camera.updateMatrixWorld();
+        const moved =
+          !sameMatrix(stage.camera.matrixWorld, view) ||
+          !sameMatrix(stage.camera.projectionMatrix, lens) ||
+          stage.version !== seen;
+        view.copy(stage.camera.matrixWorld);
+        lens.copy(stage.camera.projectionMatrix);
+        seen = stage.version;
+        stillFor = moved ? 0 : stillFor + dt;
+        let developing = false;
+        if (stillsRef.current && stillFor > STILL) {
+          darkroom ??= createDarkroom(stage, report);
+          developing = darkroom.develop(dt);
+          if (developing && L.frame % 10 === 0) report();
+        } else {
+          darkroom?.stop();
+        }
+        // the tracer's frames are paced by the tracer: they say nothing about the raster
+        if (!developing) adapt(elapsed);
+        stage.render(dt, developing && darkroom ? darkroom : undefined);
+        L.raf = requestAnimationFrame(loop);
+      };
+
+      L.last = performance.now();
+      L.raf = requestAnimationFrame(loop);
+      setGl("ready");
+
+      return () => {
+        cancelAnimationFrame(L.raf);
+        window.removeEventListener("resize", fit);
+        canvas.removeEventListener("webglcontextlost", lost);
+        pickRef.current = null;
+        darkroom?.dispose();
+        setPrint(null);
+        stage.dispose();
+        stageRef.current = null;
+      };
+    };
+
+    /* Painting the materials and compiling the shaders blocks the main thread
+       for a second or two. Two frames' grace lets "letting you in" actually
+       reach the screen first, instead of a click that appears to do nothing. */
+    setGl("loading");
+    let unmount: (() => void) | null = null;
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        unmount = mount();
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+      unmount?.();
+    };
+  }, [world, place, entries, providerFor]);
+
+  /* The big screen pauses the room; nothing you were holding stays held.
+     Paused only when there is a screen to look at: a canon with nothing
+     embeddable used to freeze the room with nothing over it. */
+  const watching = theatre && !!playing;
+  useEffect(() => {
+    paused.current = watching;
+    if (watching) {
+      live.current.keys.clear();
+      live.current.look = { x: 0, y: 0 };
+    }
+  }, [watching]);
+
+  useEffect(() => {
+    stillsRef.current = stills;
+    if (!stills) setPrint(null);
+  }, [stills]);
+
+  /* Anything over the room gives the pointer back. With the mouse still
+     captured, the cursor stayed hidden and a card's own buttons could not
+     be clicked. */
+  const covering = opened !== null || watching || capsule || adding !== null;
+  useEffect(() => {
+    if (covering && document.pointerLockElement) document.exitPointerLock();
+  }, [covering]);
+
+  // the way out has focus from the moment you are in, not once the gpu is done
+  useEffect(() => {
+    exitRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  /* The set shows what is playing: the channel in type at once, and its
+     artwork if and when that arrives. It used to wait for the artwork, so a
+     set switched on to a deleted video — or behind a blocked cdn — stayed
+     dark while the hud said it was playing. */
+  useEffect(() => {
+    const show = (state: Screen) => {
+      screenState.current = state;
+      stageRef.current?.setScreen(state);
+    };
+    if (!playing) {
+      show({ on: false });
+      return;
+    }
+    const tuned = { on: true, channel: channelLabel(channel), title: playing.title } as const;
+    show({ ...tuned, image: null });
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => show({ ...tuned, image });
+    image.src = thumbnailFor(playing.videoId);
+    return () => {
+      image.onload = null;
+    };
+  }, [playing, channel]);
+
+  /* ---------- keyboard ---------- */
+  useEffect(() => {
+    const L = live.current;
+    const down = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      // typing a link or a why is typing, not walking: the "w" in "why" stays in the box
+      if (e.target instanceof Element && e.target.closest("input, textarea, [contenteditable]")) return;
+      /* A focused control owns its own keys. Enter used to be taken for
+         "take it off the shelf" everywhere, which meant a keyboard could not
+         press the very button it had tabbed to. */
+      const control =
+        e.target instanceof Element && e.target.closest("button, a, select, input, textarea");
+      if (control && (k === "enter" || k === " ")) return;
+      // with a card in your hands, or the big screen up, you are not walking
+      if ((opened !== null || theatre || capsule || adding) && (KEYMAP[k] || LOOKMAP[k] || /^[1-9]$/.test(k)))
+        return;
+      if (KEYMAP[k] || LOOKMAP[k]) L.pointer = null; // the keyboard is aiming now, from the middle
+      if (KEYMAP[k]) {
+        L.glide = null; // your own feet win over a walk you asked for
+        L.keys.add(KEYMAP[k]!);
+        e.preventDefault();
+        return;
+      }
+      const place = /^[1-9]$/.test(k) ? places[Number(k) - 1] : undefined;
+      if (place) {
+        goTo(place.face);
+        e.preventDefault();
+        return;
+      }
+      const look = LOOKMAP[k];
+      if (look) {
+        L.glide = null;
+        L.look.x = look[0] || L.look.x;
+        L.look.y = look[1] || L.look.y;
+        e.preventDefault();
+        return;
+      }
+      if (k === "e" || k === "enter") {
+        if (opened === null && !theatre && !capsule && !adding) activate(L.aim);
+        e.preventDefault();
+        return;
+      }
+      if (k === "t") {
+        e.preventDefault();
+        if (channels.length === 0) return;
+        setTvOn(true);
+        setTheatre((on) => !on);
+        return;
+      }
+      if (k === "]" || k === ".") return tune(1);
+      if (k === "[" || k === ",") return tune(-1);
+      if (k === "l" && !touch.current) {
+        e.preventDefault();
+        if (document.pointerLockElement) document.exitPointerLock();
+        else rootRef.current?.requestPointerLock?.();
+        return;
+      }
+      if (k === "m") {
+        setMuted((m) => !m);
+        return;
+      }
+      if (k === "p") {
+        toggleStills();
+        return;
+      }
+      if (k === "escape") {
+        // the Esc that let go of mouse look is not a request to leave the room
+        if (performance.now() - releasedAt.current < 400) return;
+        if (adding) setAdding(null);
+        else if (capsule) setCapsule(false);
+        else if (theatre) setTheatre(false);
+        else if (opened !== null) setOpened(null);
+        else if (document.pointerLockElement === rootRef.current) {
+          releasedAt.current = performance.now();
+          document.exitPointerLock();
+        }
+        else onLeave();
+      }
+    };
+    const up = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      const k = KEYMAP[key];
+      if (k) L.keys.delete(k);
+      const look = LOOKMAP[key];
+      if (look) {
+        if (look[0]) L.look.x = 0;
+        if (look[1]) L.look.y = 0;
+      }
+    };
+    const blur = () => {
+      L.keys.clear();
+      L.look = { x: 0, y: 0 };
+    };
+    document.addEventListener("keydown", down);
+    document.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
+    return () => {
+      document.removeEventListener("keydown", down);
+      document.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
+    };
+  }, [activate, adding, capsule, channels.length, goTo, onLeave, opened, places, theatre, toggleStills, tune]);
+
+  /* ---------- the mouse ----------
+     The mouse works the way it does on any page: point at something and it
+     says what it is, click and you take it, drag and you turn your head. It
+     used to capture the pointer on the first click anywhere in the room —
+     the cursor vanished, the mouse only turned the camera, and the way back
+     was an Esc that could also put you out of the room. Mouse look is still
+     there for anyone who wants it, behind L or the hud, and only then. */
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const L = live.current;
+    const clamp = (p: number) => Math.max(-42, Math.min(42, p));
+    const locked = () => document.pointerLockElement === root;
+    const ndc = (e: { clientX: number; clientY: number }) => {
+      const box = root.getBoundingClientRect();
+      return {
+        x: ((e.clientX - box.left) / box.width) * 2 - 1,
+        y: -(((e.clientY - box.top) / box.height) * 2 - 1),
+      };
+    };
+
+    const lookLocked = (e: MouseEvent) => {
+      if (!locked()) return;
+      L.glide = null;
+      L.yaw += e.movementX * 0.13;
+      L.pitch = clamp(L.pitch - e.movementY * 0.104);
+    };
+    const onLock = () => {
+      const on = locked();
+      if (!on) releasedAt.current = performance.now();
+      setCaptured(on);
+      root.classList.toggle(styles.look!, on);
+      // captured, you aim from the middle like any first-person view
+      if (on) L.pointer = null;
+    };
+
+    /** a press becomes a look-around once it has moved further than a wobble */
+    const DRAG = 5;
+    let down: { x: number; y: number; id: number } | null = null;
+    let dragged = false;
+    let px = 0;
+    let py = 0;
+    const pointerDown = (e: PointerEvent) => {
+      if (locked() || e.button > 0) return;
+      down = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      dragged = false;
+      px = e.clientX;
+      py = e.clientY;
+    };
+    const pointerMove = (e: PointerEvent) => {
+      if (locked()) return;
+      if (e.pointerType === "mouse") L.pointer = ndc(e);
+      if (!down || e.pointerId !== down.id) return;
+      if (!dragged && Math.hypot(e.clientX - down.x, e.clientY - down.y) > DRAG) {
+        dragged = true;
+        root.classList.add(styles.dragging!);
+        root.setPointerCapture?.(e.pointerId);
+      }
+      if (!dragged) return;
+      L.glide = null;
+      L.yaw += (e.clientX - px) * 0.22;
+      L.pitch = clamp(L.pitch - (e.clientY - py) * 0.16);
+      px = e.clientX;
+      py = e.clientY;
+    };
+    const pointerUp = (e: PointerEvent) => {
+      if (!down || e.pointerId !== down.id) return;
+      const wasDrag = dragged;
+      down = null;
+      dragged = false;
+      root.classList.remove(styles.dragging!);
+      if (wasDrag || locked()) return;
+      // a click, or a tap: take whatever is under it, right now
+      const at = ndc(e);
+      activate(pickRef.current?.(at.x, at.y) ?? (touch.current ? L.aim : null));
+    };
+    const leave = () => {
+      L.pointer = null;
+      root.classList.remove(styles.over!);
+    };
+    const lockedClick = () => {
+      if (locked()) activate(L.aim);
+    };
+
+    document.addEventListener("mousemove", lookLocked);
+    document.addEventListener("pointerlockchange", onLock);
+    root.addEventListener("pointerdown", pointerDown);
+    root.addEventListener("pointermove", pointerMove);
+    root.addEventListener("pointerup", pointerUp);
+    root.addEventListener("pointercancel", pointerUp);
+    root.addEventListener("pointerleave", leave);
+    root.addEventListener("click", lockedClick);
+    return () => {
+      document.removeEventListener("mousemove", lookLocked);
+      document.removeEventListener("pointerlockchange", onLock);
+      root.removeEventListener("pointerdown", pointerDown);
+      root.removeEventListener("pointermove", pointerMove);
+      root.removeEventListener("pointerup", pointerUp);
+      root.removeEventListener("pointercancel", pointerUp);
+      root.removeEventListener("pointerleave", leave);
+      root.removeEventListener("click", lockedClick);
+      if (document.pointerLockElement === root) document.exitPointerLock();
+    };
+  }, [activate]);
+
+  /* ---------- the page behind goes inert while you are in here ---------- */
+  useEffect(() => {
+    // read once, here: the ref is set before this scene mounts and never moves
+    const back = opener.current;
+    const others = Array.from(document.body.children).filter((child) => child !== host);
+    for (const el of others) el.setAttribute("inert", "");
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      for (const el of others) el.removeAttribute("inert");
+      document.body.style.overflow = overflow;
+      if (back?.isConnected) back.focus({ preventScroll: true });
+    };
+  }, [host, opener]);
+
+  const hold = (key: string) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      e.preventDefault();
+      live.current.keys.add(key);
+    },
+    onPointerUp: () => live.current.keys.delete(key),
+    onPointerLeave: () => live.current.keys.delete(key),
+    onPointerCancel: () => live.current.keys.delete(key),
+    /* a click from the keyboard (detail 0) has no pointer to hold down, so it
+       takes one stride; these buttons used to do nothing at all from a key */
+    onClick: (e: React.MouseEvent) => {
+      if (e.detail !== 0) return;
+      live.current.keys.add(key);
+      window.setTimeout(() => live.current.keys.delete(key), 260);
+    },
+  });
+
+  const stickHandlers = {
+    onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+      e.stopPropagation();
+      const box = e.currentTarget.getBoundingClientRect();
+      let dx = e.clientX - (box.left + box.width / 2);
+      let dy = e.clientY - (box.top + box.height / 2);
+      const d = Math.hypot(dx, dy) || 1;
+      if (d > 44) {
+        dx = (dx / d) * 44;
+        dy = (dy / d) * 44;
+      }
+      if (nubRef.current) nubRef.current.style.transform = `translate(${dx}px,${dy}px)`;
+      live.current.stick = { x: dx / 44, y: -dy / 44 };
+    },
+    onPointerUp: () => {
+      live.current.stick = { x: 0, y: 0 };
+      if (nubRef.current) nubRef.current.style.transform = "";
+    },
+  };
+
+  /** a card in your hands or the big screen up: what is behind is out of reach */
+  const covered = covering;
+  const openedEntry = opened === null ? undefined : entries[opened];
+  const offers = openedEntry ? offersFor(openedEntry.work.id, region) : [];
+  const openedThumb = openedEntry ? thumbnailForEntry(openedEntry) : undefined;
+
+  return (
+    <>
+      <div
+        ref={rootRef}
+        className={styles.room}
+        data-venue={place.id}
+        role="application"
+        aria-label={`${displayName}'s ${place.noun}`}
+      >
+        <canvas ref={canvasRef} className={styles.canvas} />
+        {gl === "failed" ? (
+          <div className={styles.noGl}>
+            <p>this browser would not draw the room.</p>
+            <button onClick={onBrowseList}>☰ read it as a list instead</button>
+          </div>
+        ) : null}
+        {curtainUp || gl === "failed" ? null : (
+          <div
+            className={`${styles.curtain} ${gl === "ready" ? styles.curtainLift : ""}`}
+            role={gl === "loading" ? "status" : undefined}
+            aria-hidden={gl === "ready" ? true : undefined}
+            onAnimationEnd={(e) => {
+              if (e.target === e.currentTarget && gl === "ready") setCurtainUp(true);
+            }}
+          >
+            <span className={styles.curtainName}>
+              {displayName}&apos;s {place.noun}
+            </span>
+            <span className={styles.curtainNote}>letting you in…</span>
+          </div>
+        )}
+      </div>
+
+      <div className={styles.dust} />
+      <div className={styles.vign} />
+      {/* the darkroom's safelight: how far the print has come */}
+      {print && !covered ? (
+        <div className={styles.print} aria-hidden="true">
+          <span className={`${styles.safelight} ${print.state === "developed" ? styles.safelightDone : ""}`} />
+          {print.state === "developed" ? "ray traced" : "developing"} · {print.samples}{" "}
+          {print.samples === 1 ? "pass" : "passes"}
+          <span
+            className={styles.printBar}
+            style={{ transform: `scaleX(${Math.min(print.samples, FULL_EXPOSURE) / FULL_EXPOSURE})` }}
+          />
+        </div>
+      ) : null}
+      <div className={`${styles.retic} ${aimLabel ? styles.reticHot : ""}`} />
+      {aimLabel && !covered ? (
+        coarse ? (
+          // on touch the label is the button: there is no E key to press
+          <button
+            key={aimLabel.title}
+            className={`${styles.aimLabel} ${styles.aimTap}`}
+            onClick={() => activate(live.current.aim)}
+          >
+            {aimLabel.title}
+            <small>{aimLabel.hint.replace(/^E · /, "TAP · ")}</small>
+          </button>
+        ) : (
+          <div key={aimLabel.title} className={styles.aimLabel}>
+            {aimLabel.title}
+            <small>{aimLabel.hint}</small>
+          </div>
+        )
+      ) : null}
+
+      {/* the shelves, and the way to each: click one, or press its number */}
+      <nav className={styles.shelfList} aria-label="places in the room" inert={covered ? true : undefined}>
+        {places.map((place, i) => (
+          <button
+            key={place.key}
+            className={[
+              styles.shelfRow,
+              at === place.label ? styles.shelfOn : "",
+              i === world.units.length ? styles.shelfBreak : "",
+            ].join(" ")}
+            aria-current={at === place.label ? "location" : undefined}
+            onClick={() => goTo(place.face)}
+            title={`walk over to ${place.label} (${i + 1})`}
+          >
+            <span className={styles.shelfDot} />
+            <span className={styles.shelfName}>{place.label}</span>
+            {i < 9 ? <kbd className={styles.shelfKey}>{i + 1}</kbd> : null}
+          </button>
+        ))}
+      </nav>
+
+      {coarse ? (
+        <div className={styles.stick} {...stickHandlers}>
+          <i ref={nubRef} />
+        </div>
+      ) : null}
+
+      <div className={`${styles.hud} ${styles.hudTop}`} inert={covered ? true : undefined}>
+        <button ref={exitRef} className={styles.exit} onClick={onLeave}>
+          ✕ let yourself out
+          <span className={styles.exitHint}>OR PRESS ESC</span>
+        </button>
+        <span className={styles.hint}>
+          {coarse
+            ? "drag the pad to walk · drag the room to look · tap what you are aiming at"
+            : captured
+              ? "mouse look is on · esc gives the pointer back"
+              : `wasd to walk · drag or arrows to look · click a thing to take it · 1–${Math.min(9, places.length)} walk you there`}
+        </span>
+        <span className={styles.now}>
+          {playing
+            ? `${channelLabel(channel)} · ${playing.title}`
+            : (at ?? `${displayName}'s ${place.noun}`)}
+        </span>
+      </div>
+
+      <div
+        className={`${styles.hud} ${styles.hudBot} ${coarse ? styles.hudTouch : ""}`}
+        inert={covered ? true : undefined}
+      >
+        {/* on a touch screen the stick walks you; the pad would sit under it */}
+        {coarse ? null : (
+          <div className={styles.pad} role="group" aria-label="walk">
+            <button aria-label="step left" title="step left (a)" {...hold("a")}>◀</button>
+            <button aria-label="step back" title="step back (s)" {...hold("s")}>▼</button>
+            <button aria-label="step forward" title="step forward (w)" {...hold("w")}>▲</button>
+            <button aria-label="step right" title="step right (d)" {...hold("d")}>▶</button>
+          </div>
+        )}
+        <div className={styles.group} role="group" aria-label="the television">
+          <button
+            onClick={() => {
+              setTvOn(true);
+              setTheatre(true);
+            }}
+            disabled={channels.length === 0}
+            title={channels.length ? "watch full size (t)" : "nothing on this canon plays on a screen"}
+          >
+            ▶ watch
+          </button>
+          <button
+            onClick={() => setTvOn((on) => !on)}
+            disabled={channels.length === 0}
+            title={channels.length ? "the set in the room" : "nothing on this canon plays on a screen"}
+            aria-pressed={tvOn}
+          >
+            {tvOn ? "◼ set off" : "◻ set on"}
+          </button>
+          {tvOn && channels.length > 0 ? (
+            <>
+              <button onClick={() => tune(-1)} aria-label="previous channel" title="previous channel ([)">
+                ⏮
+              </button>
+              <button onClick={() => tune(1)} aria-label="next channel" title="next channel (])">
+                ⏭
+              </button>
+              <button onClick={() => setMuted((m) => !m)} title="mute (m)" aria-pressed={!muted}>
+                {muted ? "🔇 unmute" : "🔊 mute"}
+              </button>
+            </>
+          ) : null}
+        </div>
+        <div className={styles.group}>
+          {coarse ? null : (
+            <button
+              onClick={() =>
+                captured ? document.exitPointerLock() : rootRef.current?.requestPointerLock?.()
+              }
+              title="mouse look: the pointer turns your head until you press esc (l)"
+              aria-pressed={captured}
+            >
+              {captured ? "◉ mouse look" : "◎ mouse look"}
+            </button>
+          )}
+          {/* a phone would spend its battery on it: the tracer is for machines on a desk */}
+          {coarse ? null : (
+            <button
+              onClick={toggleStills}
+              title="stand still for a moment and the room is path traced: real light, bounced round the room (p)"
+              aria-pressed={stills}
+            >
+              {stills ? "◉ ray tracing" : "○ ray tracing"}
+            </button>
+          )}
+          <button
+            onClick={toggleSound}
+            title="room sound — footsteps, not a soundtrack"
+            aria-pressed={audible}
+          >
+            {audible ? "◉ sound" : "○ sound"}
+          </button>
+          <label className={styles.venuePick}>
+            <span className={styles.venueLabel}>where</span>
+            <select
+              value={place.id}
+              onChange={(e) => onVenue(e.target.value as VenueId)}
+              aria-label="where you keep it"
+            >
+              {VENUES.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button onClick={onBrowseList}>☰ read it as a list</button>
+        </div>
+      </div>
+
+      {theatre && playing ? (
+        <div
+          className={styles.theatre}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`watching ${playing.title}`}
+        >
+          <Monitor
+            playing={playing}
+            channel={channel}
+            channels={channels}
+            muted={muted}
+            onTune={tune}
+            onTuneTo={(i) => {
+              setTvOn(true);
+              setChannel(i);
+              sound.current?.clack();
+            }}
+            onMute={() => setMuted((m) => !m)}
+            onBack={() => setTheatre(false)}
+            onLeave={onLeave}
+          />
+        </div>
+      ) : null}
+
+      {adding ? (
+        <AddLinkForm
+          tone="room"
+          accepts={adding}
+          shelfNames={place.shelves}
+          onSave={onAdd}
+          onClose={() => setAdding(null)}
+        />
+      ) : null}
+
+      {capsule ? (
+        <div className={styles.inspect} role="dialog" aria-modal="true" aria-label="the capsule">
+          <div className={styles.capsuleCard}>
+            <span className={styles.seal} aria-hidden="true">
+              ✦
+            </span>
+            <p className={styles.capsuleKicker}>the capsule · sealed</p>
+            <h3 className={styles.capsuleTitle}>kept for the ones who come after</h3>
+            <p className={styles.capsuleBody}>
+              a shelf {displayName} can seal and address to named people, to be opened on a
+              date — a birthday, a year from now, after they are gone. until then nobody sees
+              what is inside, not even a blurred cover.
+            </p>
+            <p className={styles.capsuleNote}>
+              sealing one needs accounts and the database, which come next. this one is empty
+              and stays shut.
+            </p>
+          </div>
+          <div className={styles.tools}>
+            <button onClick={() => setCapsule(false)} autoFocus>
+              ✕ leave it sealed
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {openedEntry ? (
+        <div
+          className={styles.inspect}
+          role="dialog"
+          aria-modal="true"
+          aria-label={openedEntry.work.title}
+        >
+          <button
+            className={`${styles.flip} ${flipped ? styles.flipped : ""}`}
+            onClick={() => setFlipped((f) => !f)}
+            aria-label="turn it over"
+          >
+            <div className={styles.flipIn}>
+              <div className={`${styles.face} ${styles.faceFront}`}>
+                <div
+                  className={styles.big}
+                  style={{
+                    background: openedThumb
+                      ? `center / cover no-repeat url("${openedThumb}"), ${artFor(openedEntry.work.title)}`
+                      : artFor(openedEntry.work.title),
+                  }}
+                >
+                  <span>{openedEntry.work.title}</span>
+                </div>
+                {/* the why is the point of the product; it should not need a flip */}
+                <p className={styles.frontWhy}>
+                  <Written text={openedEntry.why} />
+                </p>
+                <div className={styles.strip}>
+                  {openedEntry.work.runtime} ·{" "}
+                  {isDraft(openedEntry)
+                    ? "DRAFT · ON THIS DEVICE ONLY"
+                    : (offers[0]?.provider.name.toUpperCase() ?? "NOT STREAMING HERE")}
+                </div>
+              </div>
+              <div className={`${styles.face} ${styles.faceBack}`}>
+                <h3>{openedEntry.work.title}</h3>
+                <div className={styles.rt}>
+                  {openedEntry.work.runtime} · {WEIGHT_LABEL[openedEntry.weight]} ·{" "}
+                  {regionName(region)}
+                </div>
+                <p className={styles.quote}>{openedEntry.why}</p>
+                <div className={styles.rt}>where to watch</div>
+                <div className={styles.offers}>
+                  {offers.length ? (
+                    offers.map((offer) => (
+                      <a
+                        key={offer.provider.id}
+                        className={styles.offer}
+                        style={{ background: offer.provider.colour }}
+                        href={offer.watchUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {offer.provider.name}
+                        {paid.has(offer.provider.id) ? " ✓" : ""}
+                      </a>
+                    ))
+                  ) : (
+                    <span className={styles.rt}>not streaming in {regionName(region)}</span>
+                  )}
+                </div>
+                {/* plan §6: the justwatch credit is per item, never a footer */}
+                <div className={styles.rt}>{offers[0]?.attribution ?? "via JustWatch / TMDB"}</div>
+              </div>
+            </div>
+          </button>
+          <div className={styles.tools}>
+            <button onClick={() => setFlipped((f) => !f)}>↻ turn it over</button>
+            <button onClick={() => setOpened(null)} autoFocus>
+              ✕ put it back
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}

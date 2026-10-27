@@ -1,0 +1,46 @@
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 20px;
+  padding: 18px 0 22px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 34px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+.group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.label {
+  color: var(--ink-soft);
+  opacity: 0.7;
+  margin-right: 4px;
+}
+
+.on,
+.off {
+  text-decoration: none;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  color: var(--ink-soft);
+  transition: all 0.2s var(--ease);
+}
+.off:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
