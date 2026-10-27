@@ -27,6 +27,18 @@
   letter-spacing: 0.1em;
   color: var(--ink-soft);
 }
+.account {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+  text-decoration-color: var(--red);
+  text-underline-offset: 3px;
+}
+.account:hover {
+  color: var(--red);
+}
 
 .intro {
   padding: 70px 0 46px;

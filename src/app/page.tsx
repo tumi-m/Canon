@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { allHandles, getCanon } from "@/lib/canon";
+import { accountsEnabled } from "@/lib/supabase/env";
+import AccountLink from "@/components/AccountLink";
 import styles from "./page.module.css";
 
 export default function Home() {
   const handles = allHandles();
+  const accounts = accountsEnabled();
   // every title anybody keeps, for the shelf that runs along under the pitch
   const titles = handles.flatMap((handle) => getCanon(handle)?.entries.map((e) => e.work.title) ?? []);
 
@@ -14,6 +17,7 @@ export default function Home() {
           canon<span className={styles.dot}>.</span>
           <span className={styles.cursor} />
         </span>
+        <AccountLink className={styles.account} />
       </header>
 
       <section className={styles.hero}>
@@ -57,11 +61,16 @@ export default function Home() {
           })}
         </div>
 
+        {accounts ? (
+          <Link href="/signin" className={styles.start}>
+            start your canon →
+          </Link>
+        ) : null}
+
         <p className={styles.state}>
-          early build. the canon, the availability layer and the walkable room
-          are live. a canon is meant to be yours — shown to the people you
-          invite, and left to the ones who come after — but nothing is locked
-          yet: auth and the database are the next milestones.
+          {accounts
+            ? "early build. sign in with google, apple or an email link and claim the address of your canon; the room, the availability layer and the canons above are live. shelves you keep in the database are the next step — until then what you add stays on your device."
+            : "early build. the canon, the availability layer and the walkable room are live. a canon is meant to be yours — shown to the people you invite, and left to the ones who come after — but accounts are not switched on for this copy yet."}
         </p>
       </section>
 

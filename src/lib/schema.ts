@@ -52,7 +52,8 @@ export const handleSchema = z
  * This enum maps 1:1 to the `tier` column and to the `can_view_shelf` RLS
  * predicate in docs/PLAN.md §7. **None of it is enforced here.** These values
  * describe intent so the UI and the API agree with the database; Row Level
- * Security is the security boundary, and it does not exist until M1.
+ * Security is the security boundary — `can_view_shelf` in
+ * supabase/migrations/0001_canon_init.sql, proved in tests/rls/.
  */
 export const audienceSchema = z.enum(["private", "invited", "household", "everyone"]);
 export type Audience = z.infer<typeof audienceSchema>;

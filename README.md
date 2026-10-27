@@ -17,8 +17,10 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-No environment variables are needed yet — the app runs on seed data until the
-database lands in M1. Copy `.env.example` to `.env.local` when that changes.
+No environment variables are needed: without Supabase's two public settings
+the app runs on seed data with accounts switched off, and says so where it
+matters. Copy `.env.example` to `.env.local` to switch them on (see
+[Accounts](#accounts)).
 
 | | |
 |---|---|
@@ -26,7 +28,8 @@ database lands in M1. Copy `.env.example` to `.env.local` when that changes.
 | `npm run build` · `npm start` | production build and serve |
 | `npm run typecheck` · `npm run lint` | tsc strict, eslint |
 | `npm test` | vitest — the pure layer |
-| `npm run test:e2e` | playwright — the critical paths |
+| `npm run test:rls` | row level security, against a real Postgres (`RLS_DATABASE_URL`) |
+| `npm run test:e2e` | playwright — the critical paths, with accounts off and on |
 
 Deploying to Vercel: import the repo and it builds. `vercel.json` pins
 `"framework": "nextjs"` — without it, a project whose Framework Preset has been
@@ -35,7 +38,8 @@ set to "Other" looks for a `public/` directory after the build and fails with
 `public/` here and adding an empty one would "fix" the error by deploying a
 static shell with no app in it.
 
-CI runs typecheck → lint → test → build → e2e on every push and PR.
+CI runs typecheck → lint → test → build → e2e on every push and PR, and the
+row level security suite against a Postgres 16 service alongside.
 
 ---
 
@@ -56,12 +60,18 @@ CI runs typecheck → lint → test → build → e2e on every push and PR.
   canon on a 90s monitor, and — on a machine with a graphics card — a path
   tracer that develops the room into a ray-traced still whenever you stand
   still. Five buildings to keep it in.
+- **accounts** — sign in with Google, Apple or an email link (`/signin`),
+  claim the handle your canon lives at (`/welcome`), and keep its name, line
+  and region (`/account`). A claimed handle is a canon at `/<handle>` from
+  that moment. Switched on by the Supabase settings; see [Accounts](#accounts).
 
-**What is deliberately not built:** anything needing a credential this build
-does not have — Supabase, Stripe, TMDB. There are no stubs pretending to work;
-a fake sign-in is worse than none, because it looks finished. So: no tables, no
-RLS, no auth, no writes, no payments. A canon is a static object in
-`src/lib/canon.ts`, parsed through the same zod schema an API write will use.
+**What is deliberately not built yet:** shelves and entries in the database
+(M3) — an account's canon starts empty, and what you add stays a draft on your
+device until then — and anything needing a credential this build does not
+have: Stripe, TMDB. There are no stubs pretending to work; a fake sign-in is
+worse than none, because it looks finished. The seed canon is a static object
+in `src/lib/canon.ts`, parsed through the same zod schema an API write will
+use.
 
 `docs/PROGRESS.md` has the milestone-by-milestone state and what the next
 session needs to know. `docs/PLAN.md` is the spec; `docs/BUSINESS.md` the case.
@@ -77,6 +87,13 @@ src/lib/canon.ts       the seed canon
 src/lib/availability.ts  where a thing can be watched, per region
 src/lib/runtime.ts     "1hr 47m" → minutes, and back
 src/lib/youtube.ts     id parsing, embeds, thumbnails, the channel dial
+src/lib/account.ts     the rules an account lives by: handles, safe redirects, edits
+src/lib/profiles.ts    who is signed in, and the canon behind an account's handle
+src/lib/supabase/      the server clients, and whether accounts are switched on
+src/middleware.ts      keeps a session alive; does nothing for visitors without one
+src/app/(account)/     /signin, /welcome, /account — and src/app/auth/callback
+supabase/migrations/   the schema and its row level security
+tests/rls/             the proof that security holds, against a real Postgres
 src/lib/roomSound.ts   procedural footsteps — no assets, off by default
 src/components/room/   the walkable den — world.ts is the model, scene.ts the meshes,
                        light and passes, home.ts the furniture, atmosphere.ts the
@@ -365,6 +382,62 @@ inside a bulb is not put out. The set is a light too, once it is on.
 
 ---
 
+## Accounts
+
+Supabase Auth, through `@supabase/ssr`: the session lives in cookies, every
+query runs under row level security as the person signed in, and there is no
+auth code of our own to get wrong.
+
+- **Three ways in.** Google and Apple through Supabase's OAuth with PKCE, and
+  a link by email for anyone who would rather use neither. The buttons wear
+  their providers' colours and wording, as both providers' guidelines require.
+- **A handle is claimed once, checked three times**: by the input's own
+  attributes in the browser, by `claimHandleSchema` on the server, and by the
+  database's unique constraint and `CHECK` — the one that decides. Handles that
+  would shadow a page of the site (`signin`, `account`…) or a seed canon are
+  refused.
+- **Nothing off-site.** Where a sign-in sends you afterwards arrives in a query
+  string, so `safeNext` follows only plain local paths; `//elsewhere`, full URLs
+  and the rest fall back to your account.
+- **Static pages stay static.** The masthead decides between *sign in* and
+  *your account* from whether a session cookie is there; the middleware only
+  calls Supabase for a visitor who has a session to refresh.
+
+**Switching it on** — the parts only the project's owner can do:
+
+1. **Supabase.** Create a project. Link and apply the migration yourself —
+   `npx supabase link --project-ref <ref>`, then `npx supabase db push` (it is
+   in the agent's deny list on purpose). Then regenerate the hand-written
+   types: `npx supabase gen types typescript --linked > src/lib/database.types.ts`.
+2. **Vercel.** Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   (Settings → API in Supabase; newer projects call it the publishable key) for
+   Production and Preview, and redeploy — both are read at build time.
+3. **Where people come back to.** In Supabase, Authentication → URL
+   Configuration: the Site URL is the production address, and the Redirect
+   URLs include `https://<your-domain>/auth/callback`, a wildcard for preview
+   deploys (`https://*-<your-team>.vercel.app/**`) and
+   `http://localhost:3000/auth/callback`.
+4. **Google.** In Google Cloud, an OAuth consent screen and a *Web application*
+   OAuth client whose authorised redirect URI is
+   `https://<project-ref>.supabase.co/auth/v1/callback`. Paste its client id
+   and secret into Supabase → Authentication → Providers → Google.
+5. **Apple** (needs a paid Apple Developer membership). An App ID with *Sign in
+   with Apple*; a Services ID — that is the client id — with the domain
+   `<project-ref>.supabase.co` and the return URL
+   `https://<project-ref>.supabase.co/auth/v1/callback`; and a key with *Sign
+   in with Apple* (the `.p8`, its key id, your team id). Supabase → Providers →
+   Apple takes the Services ID and a client secret generated from the key.
+   **That secret expires after at most six months** — put the renewal in a
+   calendar, or Apple sign-in stops working without warning.
+6. **Email links.** Supabase's built-in sender is rate-limited to a few emails
+   an hour; set up custom SMTP (Resend is the plan's choice) before real use.
+   And change the Magic Link template's link to
+   `{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email`, so a
+   link works even when opened in a different browser from the one that asked
+   for it — the default flow only completes in the same one.
+
+---
+
 ## Who gets in
 
 Canon is not a public feed and has no follower counts. A room is yours, and you
@@ -377,12 +450,16 @@ named people. A capsule for a child's eighteenth, or for whoever is still here
 afterwards. Sealed means sealed — before its date nobody sees the contents,
 including the people it is for.
 
-**None of this is enforced yet, and the schema says so in as many words.**
-These shapes exist so the UI and the API agree with the database. Row Level
-Security is the security boundary, the `can_view_shelf` predicate in
-`docs/PLAN.md` §7 is where the rule actually lives, and neither exists until
-M1. Until then a canon is a static object and the room's capsule door only
-explains itself.
+**Row level security is the security boundary, and it is proved, not
+assumed.** `supabase/migrations/0001_canon_init.sql` turns it on for every
+table and puts the whole visibility rule in one predicate, `can_view_shelf`;
+`tests/rls/` runs that migration, unedited, in a real Postgres as Supabase's
+own `anon` and `authenticated` roles, and checks the negative cases first — a
+stranger, an anonymous visitor, another household and an invitee to a sealed
+capsule all get zero rows. The zod shapes in `src/lib/schema.ts` exist so the
+UI and the API agree with the database, not instead of it. Shelves move into
+the database with M3; until then the room's capsule door only explains
+itself.
 
 ---
 
@@ -411,17 +488,26 @@ the character caps, the audience and capsule rules, and the room's geometry —
 shelf layout, collision,
 projection and the aim test.
 
+`npm run test:rls` proves the database's row level security against a real
+Postgres: every audience, the capsule's seal, who may write what, and the
+caps the database itself enforces — negative cases first, each with a positive
+control, and checked to go red when the migration is deliberately broken.
+
 `npm run test:e2e` covers the paths that matter today: reading someone's canon,
 a handle that does not exist, per-region providers with attribution, walking the
-room, focus containment, the list escape hatch, and taking something off the
-shelf. The two remaining critical paths — creating a canon, and a capsule
-staying sealed against a hand-crafted request — arrive with M3 and M6, because
-both need the database.
+room, focus containment, the list escape hatch, taking something off the
+shelf, and accounts — built once with them off (nothing offers a sign-in that
+leads nowhere) and once on, against a Supabase address with nothing behind it:
+each button starts the right provider's sign-in with PKCE and a way back to
+this site, `next` cannot carry anyone off-site, pages that need a session send
+you to sign in, and a link that fails says so. A real Google or Apple sign-in
+cannot be driven from a test and is not pretended to be.
 
 **Two things this environment could not verify.** YouTube's CDN is unreachable
-from the sandbox this was built in, so **no thumbnail and no embed has been
-seen to load** — the wiring is tested (ids, embed URLs, channel numbering,
-fallbacks) but the network path is not. That is why a thumbnail that fails
+from the sandbox this was built in, so **no thumbnail has been seen to load
+here** — the wiring is tested (ids, embed URLs, channel numbering, fallbacks)
+but the network path is not; the embed has since been seen playing in
+production. That is why a thumbnail that fails
 falls back to the title rather than a broken-image glyph, and it is worth a
 look on the first real deploy.
 

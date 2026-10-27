@@ -22,6 +22,14 @@
   --amber: #d99114;
   --card: #fffdf8;
 
+  /* the two sign-in buttons wear their providers' colours, as both
+     providers' guidelines require: Apple black, Google white with its rule */
+  --apple: #000000;
+  --on-apple: #ffffff;
+  --google: #ffffff;
+  --on-google: #1f1f1f;
+  --google-line: #747775;
+
   --serif: var(--font-newsreader), Georgia, serif;
   --mono: var(--font-plex-mono), ui-monospace, monospace;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);

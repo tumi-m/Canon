@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { allHandles, getCanon } from "@/lib/canon";
+import { accountCanon } from "@/lib/profiles";
 
 /**
  * The card a canon unfurls as when somebody sends the link.
@@ -31,7 +32,14 @@ const LINE = "#e3dccd";
 
 export default async function Image({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
-  const canon = getCanon(handle);
+  /* An account's card has its name on it. A database that cannot be reached
+     still gets a card — the handle on paper — rather than a broken preview. */
+  const canon =
+    getCanon(handle) ??
+    (await accountCanon(handle).catch((error: unknown) => {
+      console.error(`no sharing card details for /${handle}:`, error);
+      return null;
+    }));
   const changed = canon?.entries.filter((e) => e.weight === 3).slice(0, 3) ?? [];
 
   return new ImageResponse(

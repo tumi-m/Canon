@@ -5,8 +5,39 @@
 }
 
 .masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
+}
+.account {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+  text-decoration-color: var(--red);
+  text-underline-offset: 3px;
+}
+.account:hover {
+  color: var(--red);
+}
+.start {
+  display: inline-block;
+  margin-top: 34px;
+  padding: 13px 20px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  transition: background 0.2s var(--ease);
+}
+.start:hover {
+  background: var(--red);
 }
 .wordmark {
   font-family: var(--serif);

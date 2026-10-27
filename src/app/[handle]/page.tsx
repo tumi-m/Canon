@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { allHandles, getCanon } from "@/lib/canon";
+import type { Profile } from "@/lib/schema";
+import { accountCanon } from "@/lib/profiles";
+import AccountLink from "@/components/AccountLink";
 import { isKnownRegion, PROVIDERS, regionName } from "@/lib/availability";
 import { formatMinutes, totalMinutes } from "@/lib/runtime";
 import CanonList from "@/components/CanonList";
@@ -14,9 +17,14 @@ import styles from "./page.module.css";
 type Params = { handle: string };
 type Search = { region?: string; view?: string };
 
-/** Every canon is static until M2 puts profiles in Postgres. */
+/** The seed canons are built ahead; an account's canon is looked up when it is asked for. */
 export function generateStaticParams(): Params[] {
   return allHandles().map((handle) => ({ handle }));
+}
+
+/** A seed canon, or the canon of the account that claimed this handle. */
+async function canonAt(handle: string): Promise<Profile | null> {
+  return getCanon(handle) ?? (await accountCanon(handle));
 }
 
 export async function generateMetadata({
@@ -25,7 +33,7 @@ export async function generateMetadata({
   params: Promise<Params>;
 }): Promise<Metadata> {
   const { handle } = await params;
-  const canon = getCanon(handle);
+  const canon = await canonAt(handle);
   if (!canon) return { title: "canon. — not found" };
   return {
     title: `${canon.displayName}'s canon`,
@@ -43,7 +51,7 @@ export default async function CanonPage({
 }) {
   const { handle } = await params;
   const { region: requested, view: requestedView } = await searchParams;
-  const canon = getCanon(handle);
+  const canon = await canonAt(handle);
   if (!canon) notFound();
 
   // region comes from the profile, overridable by the visitor
@@ -62,6 +70,7 @@ export default async function CanonPage({
           canon<span className={styles.dot}>.</span>
         </Link>
         <span className={styles.handle}>/{canon.handle}</span>
+        <AccountLink className={styles.account} />
       </header>
 
       <section className={styles.intro}>
